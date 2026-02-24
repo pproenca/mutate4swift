@@ -66,6 +66,37 @@ final class MutationApplicatorTests: XCTestCase {
         XCTAssertTrue(mutated.contains("false"))
     }
 
+    func testApplyAtOffsetZero() {
+        // Mutation at the very start of the file (offset 0)
+        let site = MutationSite(
+            mutationOperator: .boolean,
+            line: 1,
+            column: 1,
+            utf8Offset: 0,
+            utf8Length: 4,
+            originalText: "true",
+            mutatedText: "false"
+        )
+        let source = "true && other"
+        let result = applicator.apply(site, to: source)
+        XCTAssertEqual(result, "false && other")
+    }
+
+    func testApplyNegativeOffsetReturnsOriginal() {
+        let site = MutationSite(
+            mutationOperator: .boolean,
+            line: 1,
+            column: 1,
+            utf8Offset: -1,
+            utf8Length: 4,
+            originalText: "true",
+            mutatedText: "false"
+        )
+        let source = "let x = true"
+        let result = applicator.apply(site, to: source)
+        XCTAssertEqual(result, source)
+    }
+
     func testApplyOutOfBoundsReturnsOriginal() {
         let site = MutationSite(
             mutationOperator: .boolean,
