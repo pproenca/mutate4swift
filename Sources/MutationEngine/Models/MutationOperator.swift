@@ -8,6 +8,7 @@ public enum MutationOperator: String, Sendable, Codable, CaseIterable {
     case constant
     case returnValue
     case guardNegate
+    case conditionNegate
     case range
 
     public var description: String {
@@ -21,6 +22,7 @@ public enum MutationOperator: String, Sendable, Codable, CaseIterable {
         case .constant: return "Constant"
         case .returnValue: return "Return Value"
         case .guardNegate: return "Guard Negate"
+        case .conditionNegate: return "Condition Negate"
         case .range: return "Range"
         }
     }

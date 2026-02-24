@@ -21,6 +21,21 @@ public final class SPMTestRunner: TestRunner, @unchecked Sendable {
         process.standardOutput = pipe
         process.standardError = pipe
 
+        // Drain pipe output on a background thread to prevent buffer deadlock.
+        // If the pipe buffer (~64KB) fills, the child process blocks on write,
+        // waitUntilExit never returns, and we false-timeout.
+        var outputData = Data()
+        let outputLock = NSLock()
+        let fileHandle = pipe.fileHandleForReading
+        fileHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            if !data.isEmpty {
+                outputLock.lock()
+                outputData.append(data)
+                outputLock.unlock()
+            }
+        }
+
         try process.run()
 
         // Timeout handling
@@ -37,19 +52,25 @@ public final class SPMTestRunner: TestRunner, @unchecked Sendable {
         if group.wait(timeout: deadline) == .timedOut {
             didTimeout = true
             process.terminate()
-            // Give it a moment to clean up
             Thread.sleep(forTimeInterval: 0.5)
             if process.isRunning {
                 process.interrupt()
             }
         }
 
+        // Stop reading and collect any remaining data
+        fileHandle.readabilityHandler = nil
+        let remaining = fileHandle.readDataToEndOfFile()
+        outputLock.lock()
+        outputData.append(remaining)
+        let finalData = outputData
+        outputLock.unlock()
+
         if didTimeout {
             return .timeout
         }
 
-        let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: outputData, encoding: .utf8) ?? ""
+        let output = String(data: finalData, encoding: .utf8) ?? ""
 
         if verbose {
             print(output)
@@ -57,13 +78,12 @@ public final class SPMTestRunner: TestRunner, @unchecked Sendable {
 
         let status = process.terminationStatus
 
-        // swift test exits 0 on success
         if status == 0 {
             return .passed
         }
 
         // Check if it's a build error vs test failure
-        if output.contains("error:") && output.contains("Build complete!") == false {
+        if output.contains("error:") && !output.contains("Build complete!") {
             return .buildError
         }
 
@@ -73,7 +93,7 @@ public final class SPMTestRunner: TestRunner, @unchecked Sendable {
     /// Runs baseline tests, returning duration.
     public func runBaseline(packagePath: String, filter: String?) throws -> BaselineResult {
         let start = Date()
-        let result = try runTests(packagePath: packagePath, filter: filter, timeout: 600) // 10 min max for baseline
+        let result = try runTests(packagePath: packagePath, filter: filter, timeout: 600)
         let duration = Date().timeIntervalSince(start)
 
         guard result == .passed else {

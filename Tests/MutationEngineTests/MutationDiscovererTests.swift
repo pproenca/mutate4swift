@@ -180,6 +180,60 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertTrue(sites[0].mutatedText.contains("!("))
     }
 
+    // MARK: - Condition negate (if/while)
+
+    func testIfConditionNegate() {
+        let source = """
+        func foo(x: Bool) {
+            if x {
+                print("yes")
+            }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .conditionNegate }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertTrue(sites[0].mutatedText.contains("!("))
+    }
+
+    func testWhileConditionNegate() {
+        let source = """
+        func foo() {
+            while running {
+                step()
+            }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .conditionNegate }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertTrue(sites[0].mutatedText.contains("!("))
+    }
+
+    func testIfConditionNegateSkipsBangPrefix() {
+        let source = """
+        func foo(x: Bool) {
+            if !x {
+                print("no")
+            }
+        }
+        """
+        // Should NOT produce a conditionNegate (unaryRemoval covers the `!`)
+        let sites = discover(source).filter { $0.mutationOperator == .conditionNegate }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    func testIfMultipleConditionsSkipped() {
+        let source = """
+        func foo(a: Bool, b: Bool) {
+            if a, b {
+                print("both")
+            }
+        }
+        """
+        // Multi-condition ifs are skipped (too complex to negate safely)
+        let sites = discover(source).filter { $0.mutationOperator == .conditionNegate }
+        XCTAssertEqual(sites.count, 0)
+    }
+
     // MARK: - Multiple mutations in one file
 
     func testMultipleMutations() {

@@ -147,6 +147,46 @@ public final class MutationDiscoverer: SyntaxVisitor {
         return .visitChildren
     }
 
+    // MARK: - If/while condition negate (Swift equivalent of clj-mutate's if ↔ if-not)
+
+    override public func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind {
+        addConditionNegateSite(conditions: node.conditions)
+        return .visitChildren
+    }
+
+    override public func visit(_ node: WhileStmtSyntax) -> SyntaxVisitorContinueKind {
+        addConditionNegateSite(conditions: node.conditions)
+        return .visitChildren
+    }
+
+    private func addConditionNegateSite(conditions: ConditionElementListSyntax) {
+        guard conditions.count == 1,
+              let condition = conditions.first,
+              let expr = condition.condition.as(ExprSyntax.self) else {
+            return
+        }
+
+        // Skip if the condition is already a prefix `!` — unaryRemoval covers that
+        if expr.is(PrefixOperatorExprSyntax.self) {
+            return
+        }
+
+        let conditionText = expr.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let start = expr.positionAfterSkippingLeadingTrivia.utf8Offset
+        let end = expr.endPositionBeforeTrailingTrivia.utf8Offset
+        let loc = sourceLocationConverter.location(for: expr.positionAfterSkippingLeadingTrivia)
+
+        sites.append(MutationSite(
+            mutationOperator: .conditionNegate,
+            line: loc.line,
+            column: loc.column,
+            utf8Offset: start,
+            utf8Length: end - start,
+            originalText: conditionText,
+            mutatedText: "!(\(conditionText))"
+        ))
+    }
+
     // MARK: - Helpers
 
     private func addSite(
