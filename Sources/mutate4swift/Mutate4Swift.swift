@@ -222,7 +222,7 @@ struct Mutate4Swift: ParsableCommand {
                     totalBuildErrors += report.buildErrors
                     totalSurvivors += report.survived
 
-                    if cachedBaseline == nil {
+                    if cachedBaseline == nil && report.totalMutations > 0 {
                         baselineExecutions += 1
                         baselineCache[baselineKey] = BaselineResult(
                             duration: report.baselineDuration,
@@ -278,8 +278,13 @@ struct Mutate4Swift: ParsableCommand {
                 }
             }
 
-            scorecard.baselineGate = .passed("Baseline tests passed")
-            scorecard.noTestsGate = .passed("At least one test executed per baseline scope")
+            if totalMutations > 0 {
+                scorecard.baselineGate = .passed("Baseline tests passed")
+                scorecard.noTestsGate = .passed("At least one test executed per baseline scope")
+            } else {
+                scorecard.baselineGate = .skipped("No mutation sites discovered")
+                scorecard.noTestsGate = .skipped("No mutation sites discovered")
+            }
 
             if let staleBackupPath = firstStaleBackupPath(for: processedSourceFiles) {
                 scorecard.restoreGuaranteeGate = .failed("Stale backup remains: \(staleBackupPath)")

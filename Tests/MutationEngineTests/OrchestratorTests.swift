@@ -89,7 +89,7 @@ final class OrchestratorTests: XCTestCase {
             )
 
             XCTAssertEqual(report.totalMutations, 0)
-            XCTAssertEqual(runner.calls.count, 1)
+            XCTAssertEqual(runner.calls.count, 0)
         }
     }
 
@@ -106,7 +106,7 @@ final class OrchestratorTests: XCTestCase {
                 packagePath: "/tmp/pkg"
             )
             XCTAssertEqual(filteredReport.totalMutations, 0)
-            XCTAssertEqual(emptyCoverageRunner.calls.count, 1)
+            XCTAssertEqual(emptyCoverageRunner.calls.count, 0)
 
             let throwingCoverageRunner = MockTestRunner(results: [.success(.passed), .success(.passed)])
             let throwingCoverage = MockCoverageProvider(result: .failure(MockError.boom))
@@ -160,6 +160,7 @@ final class OrchestratorTests: XCTestCase {
             )
 
             XCTAssertEqual(report.totalMutations, 0)
+            XCTAssertEqual(report.baselineDuration, 0)
         }
     }
 

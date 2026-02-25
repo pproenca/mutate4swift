@@ -66,6 +66,16 @@ public final class Orchestrator: @unchecked Sendable {
             }
         }
 
+        if sites.isEmpty {
+            if verbose { print("No mutation sites after filters; skipping baseline and test runs") }
+            try fileManager.restore()
+            return MutationReport(
+                results: [],
+                sourceFile: sourceFile,
+                baselineDuration: 0
+            )
+        }
+
         // Step 7: Run baseline
         let autoFilter = resolvedTestFilter ?? testFilter ?? TestFileMapper().testFilter(forSourceFile: sourceFile)
         let baseline: BaselineResult

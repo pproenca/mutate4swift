@@ -17,6 +17,71 @@ final class TestFileMapperTests: XCTestCase {
         }
     }
 
+    func testTestFilterFallsBackToTargetWhenMatchingTestFileDoesNotExist() throws {
+        try withTemporaryPackage { packageRoot in
+            let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")
+            let testFile = packageRoot.appendingPathComponent("Tests/MyLibTests/SmokeTests.swift")
+            try writeFile(at: sourceFile)
+            try writeFile(at: testFile)
+
+            let filter = mapper.testFilter(forSourceFile: sourceFile.path)
+            XCTAssertEqual(filter, "MyLibTests")
+        }
+    }
+
+    func testTestFilterUsesManifestMappedTargetWhenConventionDoesNotExist() throws {
+        let packageSwift = """
+        // swift-tools-version: 6.0
+        import PackageDescription
+
+        let package = Package(
+            name: "TmpPkg",
+            targets: [
+                .target(name: "MyLib"),
+                .testTarget(name: "LibrarySpecs", dependencies: ["MyLib"]),
+            ]
+        )
+        """
+
+        try withTemporaryPackage(packageSwift: packageSwift) { packageRoot in
+            let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")
+            let testFile = packageRoot.appendingPathComponent("Tests/LibrarySpecs/SmokeTests.swift")
+            try writeFile(at: sourceFile)
+            try writeFile(at: testFile)
+
+            let filter = mapper.testFilter(forSourceFile: sourceFile.path)
+            XCTAssertEqual(filter, "LibrarySpecs")
+        }
+    }
+
+    func testTestFilterBuildsRegexForMultipleManifestTargets() throws {
+        let packageSwift = """
+        // swift-tools-version: 6.0
+        import PackageDescription
+
+        let package = Package(
+            name: "TmpPkg",
+            targets: [
+                .target(name: "MyLib"),
+                .testTarget(name: "AlphaSpecs", dependencies: ["MyLib"]),
+                .testTarget(name: "BetaSpecs", dependencies: ["MyLib"]),
+            ]
+        )
+        """
+
+        try withTemporaryPackage(packageSwift: packageSwift) { packageRoot in
+            let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")
+            let alphaFile = packageRoot.appendingPathComponent("Tests/AlphaSpecs/SmokeTests.swift")
+            let betaFile = packageRoot.appendingPathComponent("Tests/BetaSpecs/RegressionTests.swift")
+            try writeFile(at: sourceFile)
+            try writeFile(at: alphaFile)
+            try writeFile(at: betaFile)
+
+            let filter = mapper.testFilter(forSourceFile: sourceFile.path)
+            XCTAssertEqual(filter, "^(AlphaSpecs|BetaSpecs)\\.")
+        }
+    }
+
     func testTestFilterReturnsNilWhenTestFileDoesNotExist() throws {
         try withTemporaryPackage { packageRoot in
             let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")
@@ -94,11 +159,6 @@ final class TestFileMapperTests: XCTestCase {
     }
 
     private func withTemporaryPackage(_ body: (URL) throws -> Void) throws {
-        let packageRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TestFileMapperTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: packageRoot) }
-
         let packageSwift = """
         // swift-tools-version: 6.0
         import PackageDescription
@@ -111,6 +171,18 @@ final class TestFileMapperTests: XCTestCase {
             ]
         )
         """
+        try withTemporaryPackage(packageSwift: packageSwift, body)
+    }
+
+    private func withTemporaryPackage(
+        packageSwift: String,
+        _ body: (URL) throws -> Void
+    ) throws {
+        let packageRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TestFileMapperTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: packageRoot) }
+
         try packageSwift.write(
             to: packageRoot.appendingPathComponent("Package.swift"),
             atomically: true,
