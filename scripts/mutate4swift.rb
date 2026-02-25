@@ -9,7 +9,7 @@
 class Mutate4swift < Formula
   desc "Mutation testing tool for Swift Package Manager projects"
   homepage "https://github.com/pproenca/mutate4swift"
-  url "https://github.com/pproenca/mutate4swift/releases/download/v0.1.1/mutate4swift-macos-arm64.tar.gz"
+  url "https://github.com/pproenca/mutate4swift/releases/download/v0.1.3/mutate4swift-macos-arm64.tar.gz"
   sha256 "PLACEHOLDER"
   license "MIT"
 

@@ -19,7 +19,7 @@ struct Mutate4Swift: AsyncParsableCommand {
           Live progress is written to stderr (disable with --no-progress).
           Use --json for machine-readable report output.
         """,
-        version: "0.1.1"
+        version: "0.1.3"
     )
 
     struct TargetOptions: ParsableArguments {
