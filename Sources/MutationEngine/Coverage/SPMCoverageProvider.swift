@@ -42,10 +42,8 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
         buildProcess.arguments = ["test", "--package-path", normalizedPackagePath, "--enable-code-coverage"]
-
-        let buildPipe = Pipe()
-        buildProcess.standardOutput = buildPipe
-        buildProcess.standardError = buildPipe
+        buildProcess.standardOutput = FileHandle.nullDevice
+        buildProcess.standardError = FileHandle.nullDevice
 
         try buildProcess.run()
         buildProcess.waitUntilExit()
@@ -106,6 +104,11 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
 
     func exportCoverage(binaryPath: String, profdataPath: String) throws -> String {
         let outputPath = NSTemporaryDirectory() + "mutate4swift_coverage_\(UUID().uuidString).json"
+        let outputURL = URL(fileURLWithPath: outputPath)
+        let fileManager = FileManager.default
+        _ = fileManager.createFile(atPath: outputPath, contents: nil)
+        let outputHandle = try FileHandle(forWritingTo: outputURL)
+        defer { try? outputHandle.close() }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
@@ -114,9 +117,7 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
             "-instr-profile=\(profdataPath)",
             binaryPath,
         ]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
+        process.standardOutput = outputHandle
         process.standardError = Pipe()
 
         try process.run()
@@ -124,9 +125,6 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         guard process.terminationStatus == 0 else {
             throw Mutate4SwiftError.coverageDataUnavailable
         }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        try data.write(to: URL(fileURLWithPath: outputPath))
 
         return outputPath
     }
