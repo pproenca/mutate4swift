@@ -183,6 +183,31 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(sites.count, 0)
     }
 
+    // MARK: - Constant boundary
+
+    func testConstantBoundaryProducesPlusAndMinusOneMutations() {
+        let source = "let limit = 42"
+        let sites = discover(source).filter { $0.mutationOperator == .constantBoundary }
+        XCTAssertEqual(sites.count, 2)
+        let mutated = Set(sites.map { $0.mutatedText })
+        XCTAssertEqual(mutated, Set(["43", "41"]))
+    }
+
+    func testConstantBoundarySkipsZeroAndOne() {
+        let source = """
+        let a = 0
+        let b = 1
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .constantBoundary }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    func testConstantBoundarySkipsNonDecimalLiterals() {
+        let source = "let mask = 0x10"
+        let sites = discover(source).filter { $0.mutationOperator == .constantBoundary }
+        XCTAssertEqual(sites.count, 0)
+    }
+
     // MARK: - Unary
 
     func testUnaryRemovalBang() {
@@ -229,6 +254,63 @@ final class MutationDiscovererTests: XCTestCase {
         }
         """
         let sites = discover(source).filter { $0.mutationOperator == .returnValue }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    // MARK: - Typed return defaults
+
+    func testTypedReturnDefaultForBoolReturnType() {
+        let source = """
+        func isReady() -> Bool {
+            return shouldRun()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .typedReturnDefault }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].mutatedText, "return false")
+    }
+
+    func testTypedReturnDefaultForStringReturnType() {
+        let source = """
+        func displayName() -> String {
+            return fullName()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .typedReturnDefault }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].mutatedText, "return \"\"")
+    }
+
+    func testTypedReturnDefaultForNumericReturnType() {
+        let source = """
+        func count() -> Int {
+            return total()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .typedReturnDefault }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].mutatedText, "return 0")
+    }
+
+    func testTypedReturnDefaultForOptionalReturnType() {
+        let source = """
+        func maybeCount() -> Int? {
+            return total()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .typedReturnDefault }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].mutatedText, "return nil")
+    }
+
+    func testTypedReturnDefaultSkipsUnsupportedTypes() {
+        let source = """
+        struct User {}
+        func makeUser() -> User {
+            return User()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .typedReturnDefault }
         XCTAssertEqual(sites.count, 0)
     }
 
@@ -334,6 +416,56 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(sites[0].mutatedText, "?")
     }
 
+    // MARK: - Cast strength
+
+    func testCastStrengthOptionalToForced() {
+        let source = "let dog = pet as? Dog"
+        let sites = discover(source).filter { $0.mutationOperator == .castStrength }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "?")
+        XCTAssertEqual(sites[0].mutatedText, "!")
+    }
+
+    func testCastStrengthForcedToOptional() {
+        let source = "let dog = pet as! Dog"
+        let sites = discover(source).filter { $0.mutationOperator == .castStrength }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "!")
+        XCTAssertEqual(sites[0].mutatedText, "?")
+    }
+
+    func testCastStrengthSkipsPlainAsCast() {
+        let source = "let dog = pet as Dog"
+        let sites = discover(source).filter { $0.mutationOperator == .castStrength }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    // MARK: - Optional chaining
+
+    func testOptionalChainingToForceUnwrap() {
+        let source = "let name = user?.name"
+        let sites = discover(source).filter { $0.mutationOperator == .optionalChaining }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "?")
+        XCTAssertEqual(sites[0].mutatedText, "!")
+    }
+
+    func testOptionalChainingFindsEachQuestionMarkInNestedChain() {
+        let source = "let city = user?.address?.city"
+        let sites = discover(source).filter { $0.mutationOperator == .optionalChaining }
+        XCTAssertEqual(sites.count, 2)
+        for site in sites {
+            XCTAssertEqual(site.originalText, "?")
+            XCTAssertEqual(site.mutatedText, "!")
+        }
+    }
+
+    func testOptionalChainingSkipsOptionalTypeAnnotations() {
+        let source = "let name: String? = nil"
+        let sites = discover(source).filter { $0.mutationOperator == .optionalChaining }
+        XCTAssertEqual(sites.count, 0)
+    }
+
     // MARK: - Ternary swap
 
     func testTernarySwap() {
@@ -385,6 +517,32 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(sites[0].originalText, "user?.name ?? \"Anonymous\"")
         let mutated = Set(sites.map { $0.mutatedText })
         XCTAssertEqual(mutated, Set(["\"Anonymous\"", "(user?.name)!"]))
+    }
+
+    // MARK: - Stdlib semantic
+
+    func testStdlibSemanticMinToMax() {
+        let source = "let best = min(a, b)"
+        let sites = discover(source).filter { $0.mutationOperator == .stdlibSemantic }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "min")
+        XCTAssertEqual(sites[0].mutatedText, "max")
+    }
+
+    func testStdlibSemanticMaxToMin() {
+        let source = "let best = max(a, b)"
+        let sites = discover(source).filter { $0.mutationOperator == .stdlibSemantic }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "max")
+        XCTAssertEqual(sites[0].mutatedText, "min")
+    }
+
+    func testStdlibSemanticCollectionMinToMax() {
+        let source = "let best = numbers.min()"
+        let sites = discover(source).filter { $0.mutationOperator == .stdlibSemantic }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "min")
+        XCTAssertEqual(sites[0].mutatedText, "max")
     }
 
     // MARK: - Statement deletion
@@ -454,6 +612,21 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(sites.count, 0)
     }
 
+    // MARK: - Defer removal
+
+    func testDeferRemoval() {
+        let source = """
+        func run() {
+            defer { cleanup() }
+            work()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .deferRemoval }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "defer { cleanup() }")
+        XCTAssertEqual(sites[0].mutatedText, "")
+    }
+
     // MARK: - Void call removal
 
     func testVoidCallRemovalForStatementLevelCall() {
@@ -510,6 +683,96 @@ final class MutationDiscovererTests: XCTestCase {
         let voidCallRemoval = discover(source).filter { $0.mutationOperator == .voidCallRemoval }
         XCTAssertEqual(statementDeletion.count, 0)
         XCTAssertEqual(voidCallRemoval.count, 1)
+    }
+
+    // MARK: - Loop control
+
+    func testLoopControlContinueToBreak() {
+        let source = """
+        func run() {
+            while active {
+                continue
+            }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .loopControl }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "continue")
+        XCTAssertEqual(sites[0].mutatedText, "break")
+    }
+
+    func testLoopControlBreakToContinueInsideLoop() {
+        let source = """
+        func run() {
+            while active {
+                break
+            }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .loopControl }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "break")
+        XCTAssertEqual(sites[0].mutatedText, "continue")
+    }
+
+    func testLoopControlSkipsBreakInsideSwitch() {
+        let source = """
+        func run(x: Int) {
+            switch x {
+            case 1:
+                break
+            default:
+                break
+            }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .loopControl }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    // MARK: - Concurrency context
+
+    func testConcurrencyContextTaskToDetached() {
+        let source = """
+        func run() {
+            _ = Task { await work() }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .concurrencyContext }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "Task")
+        XCTAssertEqual(sites[0].mutatedText, "Task.detached")
+    }
+
+    func testConcurrencyContextDetachedToTask() {
+        let source = """
+        func run() {
+            _ = Task.detached { await work() }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .concurrencyContext }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "Task.detached")
+        XCTAssertEqual(sites[0].mutatedText, "Task")
+    }
+
+    // MARK: - Tailored identifier literal
+
+    func testTailoredIdentifierLiteralSwapsWithinFileLiteralPool() {
+        let source = """
+        let userKey = "user_id"
+        let fallback = "anonymous"
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .tailoredIdentifierLiteral }
+        XCTAssertEqual(sites.count, 2)
+        XCTAssertEqual(sites[0].mutatedText, "\"anonymous\"")
+        XCTAssertEqual(sites[1].mutatedText, "\"user_id\"")
+    }
+
+    func testTailoredIdentifierLiteralSkipsNonIdentifierLikeString() {
+        let source = "let message = \"hello world\""
+        let sites = discover(source).filter { $0.mutationOperator == .tailoredIdentifierLiteral }
+        XCTAssertEqual(sites.count, 0)
     }
 
     func testIfMultipleConditionsSkipped() {

@@ -23,6 +23,15 @@ final class MutationOperatorTests: XCTestCase {
             .nilCoalescing: "Nil Coalescing",
             .statementDeletion: "Statement Deletion",
             .voidCallRemoval: "Void Call Removal",
+            .castStrength: "Cast Strength",
+            .optionalChaining: "Optional Chaining",
+            .typedReturnDefault: "Typed Return Default",
+            .constantBoundary: "Constant Boundary",
+            .deferRemoval: "Defer Removal",
+            .loopControl: "Loop Control",
+            .stdlibSemantic: "Stdlib Semantic",
+            .concurrencyContext: "Concurrency Context",
+            .tailoredIdentifierLiteral: "Tailored Identifier Literal",
         ]
 
         XCTAssertEqual(Set(expected.keys), Set(MutationOperator.allCases))
