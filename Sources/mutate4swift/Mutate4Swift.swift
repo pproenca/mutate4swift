@@ -7,7 +7,7 @@ struct Mutate4Swift: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mutate4swift",
         abstract: "Mutation testing for SwiftPM and Xcode projects",
-        version: "0.1.0"
+        version: "0.1.1"
     )
 
     @Argument(help: "Path to the Swift source file to mutate (omit when using --all)")
