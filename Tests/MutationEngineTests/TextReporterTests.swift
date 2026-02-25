@@ -128,4 +128,20 @@ final class TextReporterTests: XCTestCase {
         XCTAssertTrue(output.contains("Files with survivors: 1"))
         XCTAssertTrue(output.contains("SURVIVING MUTATIONS"))
     }
+
+    func testRepositoryReportMarksNoMutationsFiles() {
+        let repositoryReport = RepositoryMutationReport(
+            packagePath: "/tmp/mutate4swift",
+            fileReports: [
+                MutationReport(
+                    results: [],
+                    sourceFile: "Sources/Empty.swift",
+                    baselineDuration: 0.1
+                ),
+            ]
+        )
+
+        let output = reporter.report(repositoryReport)
+        XCTAssertTrue(output.contains("[NO_MUTATIONS] Sources/Empty.swift"))
+    }
 }

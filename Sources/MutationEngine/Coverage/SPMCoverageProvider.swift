@@ -31,12 +31,9 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         return try parseCoverage(codecovPath: codecovPath, filePath: filePath)
     }
 
-    private func findCodecovJSON(buildPath: String, packagePath: String) throws -> String {
+    func findCodecovJSON(buildPath: String, packagePath: String) throws -> String {
         // swift test --enable-code-coverage produces a codecov JSON at .build/debug/codecov/
         // We use `llvm-cov export` to generate the JSON
-
-        let showProcess = Process()
-        showProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
 
         // Find the .profdata
         let profdataPath = (buildPath as NSString)
@@ -64,7 +61,7 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         return try exportCoverage(binaryPath: binaryPath, profdataPath: profdataPath)
     }
 
-    private func exportCoverage(binaryPath: String, profdataPath: String) throws -> String {
+    func exportCoverage(binaryPath: String, profdataPath: String) throws -> String {
         let outputPath = NSTemporaryDirectory() + "mutate4swift_coverage.json"
 
         let process = Process()
@@ -80,7 +77,10 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         process.standardError = Pipe()
 
         try process.run()
-        
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw Mutate4SwiftError.coverageDataUnavailable
+        }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         try data.write(to: URL(fileURLWithPath: outputPath))
@@ -88,7 +88,7 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         return outputPath
     }
 
-    private func parseCoverage(codecovPath: String, filePath: String) throws -> Set<Int> {
+    func parseCoverage(codecovPath: String, filePath: String) throws -> Set<Int> {
         let data = try Data(contentsOf: URL(fileURLWithPath: codecovPath))
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],

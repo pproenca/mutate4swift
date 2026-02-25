@@ -129,17 +129,6 @@ public final class MutationDiscoverer: SyntaxVisitor {
         return .visitChildren
     }
 
-    // MARK: - Ternary swap
-
-    override public func visit(_ node: TernaryExprSyntax) -> SyntaxVisitorContinueKind {
-        addTernarySwapSite(
-            condition: node.condition,
-            thenExpression: node.thenExpression,
-            elseExpression: node.elseExpression
-        )
-        return .visitChildren
-    }
-
     override public func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
         // Parser trees contain unresolved ternaries in sequence expressions:
         // `condition`, `UnresolvedTernaryExprSyntax`, `elseExpression`.

@@ -15,13 +15,11 @@ public struct SourceFileDiscoverer: Sendable {
             throw Mutate4SwiftError.invalidSourceFile("Missing Sources directory at \(sourcesURL.path)")
         }
 
-        guard let enumerator = FileManager.default.enumerator(
+        let enumerator = FileManager.default.enumerator(
             at: sourcesURL,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
-        ) else {
-            throw Mutate4SwiftError.invalidSourceFile("Failed to enumerate source files under \(sourcesURL.path)")
-        }
+        )!
 
         var files: [String] = []
         for case let fileURL as URL in enumerator {

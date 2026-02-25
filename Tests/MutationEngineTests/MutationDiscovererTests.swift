@@ -245,6 +245,16 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertTrue(sites[0].mutatedText.contains("!("))
     }
 
+    func testGuardNegateSkipsMultipleConditions() {
+        let source = """
+        func foo(x: Bool, y: Bool) {
+            guard x, y else { return }
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .guardNegate }
+        XCTAssertEqual(sites.count, 0)
+    }
+
     // MARK: - Condition negate (if/while)
 
     func testIfConditionNegate() {
@@ -391,6 +401,28 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(sites[0].mutatedText, "")
     }
 
+    func testStatementDeletionForSimpleAssignment() {
+        let source = """
+        func bump() {
+            count = 1
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .statementDeletion }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "count = 1")
+    }
+
+    func testStatementDeletionForAssignmentWithSemicolon() {
+        let source = """
+        func bump() {
+            count += 1;
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .statementDeletion }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "count += 1;")
+    }
+
     func testStatementDeletionSkipsDeclarations() {
         let source = """
         func bump() {
@@ -406,6 +438,16 @@ final class MutationDiscovererTests: XCTestCase {
         let source = """
         func bump() {
             1 + 2
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .statementDeletion }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    func testStatementDeletionSkipsComparisonExpression() {
+        let source = """
+        func bump() {
+            isReady == true
         }
         """
         let sites = discover(source).filter { $0.mutationOperator == .statementDeletion }
@@ -435,6 +477,17 @@ final class MutationDiscovererTests: XCTestCase {
         let sites = discover(source).filter { $0.mutationOperator == .voidCallRemoval }
         XCTAssertEqual(sites.count, 1)
         XCTAssertEqual(sites[0].originalText, "try? save()")
+    }
+
+    func testVoidCallRemovalForAwaitWrappedCall() {
+        let source = """
+        func run() async {
+            await save()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .voidCallRemoval }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "await save()")
     }
 
     func testVoidCallRemovalSkipsCallUsedInDeclaration() {

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum TestRunResult: Sendable {
+public enum TestRunResult: Sendable, Equatable {
     case passed
     case failed
     case timeout
