@@ -79,6 +79,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
 
         let filter = buildScopeFilter(
             sourceFileCandidates: sourcePathCandidates,
+            sourceFileCandidateSet: Set(sourcePathCandidates),
             packagePath: normalizedPackagePath,
             index: context.index
         )
@@ -319,6 +320,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
 
     private func buildScopeFilter(
         sourceFileCandidates: [String],
+        sourceFileCandidateSet: Set<String>,
         packagePath: String,
         index: IndexStoreDB?
     ) -> String? {
@@ -326,10 +328,32 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
             return nil
         }
 
+        let packagePrefixes = packagePathPrefixes(for: packagePath)
+        var normalizedPathCache: [String: String] = [:]
+        var testTargetCache: [String: String?] = [:]
+
+        func normalizedPath(_ rawPath: String) -> String {
+            if let cached = normalizedPathCache[rawPath] {
+                return cached
+            }
+            let normalized = standardizedPath(rawPath)
+            normalizedPathCache[rawPath] = normalized
+            return normalized
+        }
+
+        func cachedTestTarget(for normalizedPath: String) -> String? {
+            if let cached = testTargetCache[normalizedPath] {
+                return cached
+            }
+            let target = testTargetName(for: normalizedPath)
+            testTargetCache[normalizedPath] = target
+            return target
+        }
+
         var mainFiles: [String] = []
         for sourceFile in sourceFileCandidates {
             mainFiles.append(
-                contentsOf: index.mainFilesContainingFile(path: sourceFile).map(standardizedPath)
+                contentsOf: index.mainFilesContainingFile(path: sourceFile).map(normalizedPath)
             )
         }
 
@@ -340,12 +364,11 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         let normalizedMainFiles = Array(Set(mainFiles)).sorted()
         let testOccurrences = index.unitTests(referencedByMainFiles: normalizedMainFiles)
 
-        let packagePrefix = packagePath.hasSuffix("/") ? packagePath : packagePath + "/"
         var testTargets = Set<String>()
         for occurrence in testOccurrences {
-            let testPath = standardizedPath(occurrence.location.path)
-            guard testPath.hasPrefix(packagePrefix),
-                  let target = testTargetName(for: testPath) else {
+            let testPath = normalizedPath(occurrence.location.path)
+            guard isPath(testPath, underAnyPrefix: packagePrefixes),
+                  let target = cachedTestTarget(for: testPath) else {
                 continue
             }
             testTargets.insert(target)
@@ -353,8 +376,8 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
 
         if testTargets.isEmpty {
             for occurrence in testOccurrences {
-                let testPath = standardizedPath(occurrence.location.path)
-                guard let target = testTargetName(for: testPath) else {
+                let testPath = normalizedPath(occurrence.location.path)
+                guard let target = cachedTestTarget(for: testPath) else {
                     continue
                 }
                 testTargets.insert(target)
@@ -364,6 +387,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         if testTargets.isEmpty {
             testTargets = targetsFromSymbolReferences(
                 sourceFileCandidates: sourceFileCandidates,
+                sourceFileCandidateSet: sourceFileCandidateSet,
                 packagePath: packagePath,
                 index: index
             )
@@ -383,22 +407,46 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
     }
 
     private func testTargetName(for testFilePath: String) -> String? {
-        let components = URL(fileURLWithPath: testFilePath).pathComponents
-        guard let testsIndex = components.firstIndex(of: "Tests"),
-              testsIndex + 1 < components.count else {
+        guard let testsRange = testFilePath.range(of: "/Tests/") else {
             return nil
         }
 
-        let targetName = components[testsIndex + 1]
-        return targetName.isEmpty ? nil : targetName
+        let remaining = testFilePath[testsRange.upperBound...]
+        guard let slashIndex = remaining.firstIndex(of: "/"), slashIndex > remaining.startIndex else {
+            return nil
+        }
+
+        let targetName = remaining[..<slashIndex]
+        return targetName.isEmpty ? nil : String(targetName)
     }
 
     private func targetsFromSymbolReferences(
         sourceFileCandidates: [String],
+        sourceFileCandidateSet: Set<String>,
         packagePath: String,
         index: IndexStoreDB
     ) -> Set<String> {
-        let packagePrefix = packagePath.hasSuffix("/") ? packagePath : packagePath + "/"
+        let packagePrefixes = packagePathPrefixes(for: packagePath)
+        var normalizedPathCache: [String: String] = [:]
+        var testTargetCache: [String: String?] = [:]
+
+        func normalizedPath(_ rawPath: String) -> String {
+            if let cached = normalizedPathCache[rawPath] {
+                return cached
+            }
+            let normalized = standardizedPath(rawPath)
+            normalizedPathCache[rawPath] = normalized
+            return normalized
+        }
+
+        func cachedTestTarget(for normalizedPath: String) -> String? {
+            if let cached = testTargetCache[normalizedPath] {
+                return cached
+            }
+            let target = testTargetName(for: normalizedPath)
+            testTargetCache[normalizedPath] = target
+            return target
+        }
 
         var symbols = Set<String>()
         for sourceFile in sourceFileCandidates {
@@ -418,18 +466,18 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         for usr in symbols {
             let occurrences = index.occurrences(ofUSR: usr, roles: referenceRoles)
             for occurrence in occurrences {
-                let candidatePath = standardizedPath(occurrence.location.path)
-                guard !sourceFileCandidates.contains(candidatePath) else {
+                let candidatePath = normalizedPath(occurrence.location.path)
+                guard !sourceFileCandidateSet.contains(candidatePath) else {
                     continue
                 }
 
-                if candidatePath.hasPrefix(packagePrefix),
-                   let target = testTargetName(for: candidatePath) {
+                if isPath(candidatePath, underAnyPrefix: packagePrefixes),
+                   let target = cachedTestTarget(for: candidatePath) {
                     targets.insert(target)
                     continue
                 }
 
-                if let target = testTargetName(for: candidatePath) {
+                if let target = cachedTestTarget(for: candidatePath) {
                     targets.insert(target)
                 }
             }
@@ -511,6 +559,26 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
             .standardizedFileURL
             .resolvingSymlinksInPath()
             .path
+    }
+
+    private func packagePathPrefixes(for packagePath: String) -> [String] {
+        let normalized = packagePath.hasSuffix("/") ? packagePath : packagePath + "/"
+        var prefixes: [String] = [normalized]
+
+        if normalized.hasPrefix("/private/") {
+            let withoutPrivate = String(normalized.dropFirst("/private".count))
+            if !withoutPrivate.isEmpty {
+                prefixes.append(withoutPrivate)
+            }
+        } else if normalized.hasPrefix("/var/") {
+            prefixes.append("/private" + normalized)
+        }
+
+        return prefixes
+    }
+
+    private func isPath(_ path: String, underAnyPrefix prefixes: [String]) -> Bool {
+        prefixes.contains { path.hasPrefix($0) }
     }
 
     private func lookupPathCandidates(for sourceFile: String) -> [String] {

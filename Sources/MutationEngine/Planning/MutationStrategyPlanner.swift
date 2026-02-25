@@ -176,9 +176,11 @@ public struct MutationStrategyPlanner: Sendable {
         }
 
         let jobsPlanned = min(jobs, candidateWorkloads.count)
-        var mutableBuckets = (0..<jobsPlanned).map {
-            MutableBucket(workerIndex: $0, workloads: [], totalWeight: 0)
-        }
+        var bucketHeap = MinBucketHeap(
+            elements: (0..<jobsPlanned).map {
+                MutableBucket(workerIndex: $0, workloads: [], totalWeight: 0)
+            }
+        )
 
         let sortedWorkloads = candidateWorkloads.sorted {
             if $0.candidateMutations == $1.candidateMutations {
@@ -189,20 +191,15 @@ public struct MutationStrategyPlanner: Sendable {
 
         // LPT schedule (Longest Processing Time first): CLRS-style list scheduling.
         for workload in sortedWorkloads {
-            let targetIndex = mutableBuckets.indices.min {
-                let lhs = mutableBuckets[$0]
-                let rhs = mutableBuckets[$1]
-                if lhs.totalWeight == rhs.totalWeight {
-                    return lhs.workerIndex < rhs.workerIndex
-                }
-                return lhs.totalWeight < rhs.totalWeight
-            } ?? 0
-
-            mutableBuckets[targetIndex].workloads.append(workload)
-            mutableBuckets[targetIndex].totalWeight += workload.candidateMutations
+            guard var target = bucketHeap.popMin() else {
+                continue
+            }
+            target.workloads.append(workload)
+            target.totalWeight += workload.candidateMutations
+            bucketHeap.push(target)
         }
 
-        let buckets = mutableBuckets.map {
+        let buckets = bucketHeap.snapshotSortedByWorkerIndex().map {
             MutationExecutionBucket(
                 workerIndex: $0.workerIndex,
                 workloads: $0.workloads,
@@ -223,5 +220,90 @@ public struct MutationStrategyPlanner: Sendable {
         let workerIndex: Int
         var workloads: [MutationWorkload]
         var totalWeight: Int
+    }
+
+    /// Maintains the least-loaded worker at the root for O(log jobs) insertion.
+    private struct MinBucketHeap {
+        private var elements: [MutableBucket]
+
+        init(elements: [MutableBucket]) {
+            self.elements = elements
+            if elements.count > 1 {
+                for index in stride(from: (elements.count / 2) - 1, through: 0, by: -1) {
+                    siftDown(from: index)
+                }
+            }
+        }
+
+        mutating func popMin() -> MutableBucket? {
+            guard !elements.isEmpty else {
+                return nil
+            }
+
+            let minimum = elements[0]
+            if elements.count == 1 {
+                elements.removeLast()
+                return minimum
+            }
+
+            elements[0] = elements.removeLast()
+            siftDown(from: 0)
+            return minimum
+        }
+
+        mutating func push(_ bucket: MutableBucket) {
+            elements.append(bucket)
+            siftUp(from: elements.count - 1)
+        }
+
+        func snapshotSortedByWorkerIndex() -> [MutableBucket] {
+            elements.sorted { lhs, rhs in
+                lhs.workerIndex < rhs.workerIndex
+            }
+        }
+
+        private mutating func siftUp(from index: Int) {
+            var child = index
+            while child > 0 {
+                let parent = (child - 1) / 2
+                guard isHigherPriority(elements[child], than: elements[parent]) else {
+                    return
+                }
+                elements.swapAt(child, parent)
+                child = parent
+            }
+        }
+
+        private mutating func siftDown(from index: Int) {
+            var parent = index
+            while true {
+                let left = (2 * parent) + 1
+                let right = left + 1
+                var smallest = parent
+
+                if left < elements.count,
+                   isHigherPriority(elements[left], than: elements[smallest]) {
+                    smallest = left
+                }
+                if right < elements.count,
+                   isHigherPriority(elements[right], than: elements[smallest]) {
+                    smallest = right
+                }
+
+                guard smallest != parent else {
+                    return
+                }
+
+                elements.swapAt(parent, smallest)
+                parent = smallest
+            }
+        }
+
+        private func isHigherPriority(_ lhs: MutableBucket, than rhs: MutableBucket) -> Bool {
+            if lhs.totalWeight == rhs.totalWeight {
+                return lhs.workerIndex < rhs.workerIndex
+            }
+            return lhs.totalWeight < rhs.totalWeight
+        }
     }
 }

@@ -2,16 +2,29 @@ import Foundation
 
 public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
     private let verbose: Bool
+    private let cacheLock = NSLock()
+    private var coverageByPackageCache: [String: [String: Set<Int>]] = [:]
 
     public init(verbose: Bool = false) {
         self.verbose = verbose
     }
 
     public func coveredLines(forFile filePath: String, packagePath: String) throws -> Set<Int> {
+        let normalizedPackagePath = (packagePath as NSString).standardizingPath
+        let normalizedFilePath = (filePath as NSString).standardizingPath
+
+        cacheLock.lock()
+        if let cachedCoverage = coverageByPackageCache[normalizedPackagePath] {
+            let lines = cachedCoverage[normalizedFilePath] ?? []
+            cacheLock.unlock()
+            return lines
+        }
+        cacheLock.unlock()
+
         // Run swift test with coverage enabled
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-        buildProcess.arguments = ["test", "--package-path", packagePath, "--enable-code-coverage"]
+        buildProcess.arguments = ["test", "--package-path", normalizedPackagePath, "--enable-code-coverage"]
 
         let buildPipe = Pipe()
         buildProcess.standardOutput = buildPipe
@@ -25,10 +38,16 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         }
 
         // Find the profdata and binary
-        let buildPath = (packagePath as NSString).appendingPathComponent(".build")
-        let codecovPath = try findCodecovJSON(buildPath: buildPath, packagePath: packagePath)
+        let buildPath = (normalizedPackagePath as NSString).appendingPathComponent(".build")
+        let codecovPath = try findCodecovJSON(buildPath: buildPath, packagePath: normalizedPackagePath)
+        let coverageByFile = try parseCoverageMap(codecovPath: codecovPath)
 
-        return try parseCoverage(codecovPath: codecovPath, filePath: filePath)
+        cacheLock.lock()
+        coverageByPackageCache[normalizedPackagePath] = coverageByFile
+        let lines = coverageByFile[normalizedFilePath] ?? []
+        cacheLock.unlock()
+
+        return lines
     }
 
     func findCodecovJSON(buildPath: String, packagePath: String) throws -> String {
@@ -89,6 +108,12 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
     }
 
     func parseCoverage(codecovPath: String, filePath: String) throws -> Set<Int> {
+        let coverageByFile = try parseCoverageMap(codecovPath: codecovPath)
+        let resolvedPath = (filePath as NSString).standardizingPath
+        return coverageByFile[resolvedPath] ?? []
+    }
+
+    func parseCoverageMap(codecovPath: String) throws -> [String: Set<Int>] {
         let data = try Data(contentsOf: URL(fileURLWithPath: codecovPath))
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -96,28 +121,26 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
             throw Mutate4SwiftError.coverageDataUnavailable
         }
 
-        let resolvedPath = (filePath as NSString).standardizingPath
-
-        var coveredLines = Set<Int>()
+        var linesByFile: [String: Set<Int>] = [:]
 
         for entry in dataArray {
             guard let files = entry["files"] as? [[String: Any]] else { continue }
             for file in files {
                 guard let filename = file["filename"] as? String,
-                      (filename as NSString).standardizingPath == resolvedPath,
                       let segments = file["segments"] as? [[Any]] else { continue }
+                let normalizedFilename = (filename as NSString).standardizingPath
 
                 for segment in segments {
                     guard segment.count >= 5,
                           let line = segment[0] as? Int,
                           let count = segment[2] as? Int else { continue }
                     if count > 0 {
-                        coveredLines.insert(line)
+                        linesByFile[normalizedFilename, default: []].insert(line)
                     }
                 }
             }
         }
 
-        return coveredLines
+        return linesByFile
     }
 }

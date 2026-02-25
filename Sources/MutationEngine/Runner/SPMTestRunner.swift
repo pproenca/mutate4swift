@@ -20,7 +20,9 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
         let result = try runCommand(
             executable: "/usr/bin/swift",
             args: ["build", "--package-path", packagePath, "--build-tests"],
-            timeout: timeout
+            timeout: timeout,
+            captureOutput: verbose,
+            analyzeOutput: false
         )
 
         if verbose {
@@ -64,7 +66,9 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
         let result = try runCommand(
             executable: "/usr/bin/swift",
             args: args,
-            timeout: timeout
+            timeout: timeout,
+            captureOutput: verbose,
+            analyzeOutput: true
         )
 
         if result.didTimeout {
@@ -78,17 +82,17 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
 
         let status = result.terminationStatus
         if status == 0 {
-            if !didExecuteAtLeastOneTest(output) {
+            if !result.analysis.executedAtLeastOneTest {
                 return .noTests
             }
             return .passed
         }
 
-        if indicatesNoTests(output), !didExecuteAtLeastOneTest(output) {
+        if result.analysis.indicatesNoTests && !result.analysis.executedAtLeastOneTest {
             return .noTests
         }
 
-        if output.contains("error:") && !output.contains("Build complete!") {
+        if result.analysis.sawBuildErrorMarker && !result.analysis.sawBuildCompleteMarker {
             return .buildError
         }
 
@@ -98,8 +102,15 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
     private func runCommand(
         executable: String,
         args: [String],
-        timeout: TimeInterval
-    ) throws -> (terminationStatus: Int32, output: String, didTimeout: Bool) {
+        timeout: TimeInterval,
+        captureOutput: Bool,
+        analyzeOutput: Bool
+    ) throws -> (
+        terminationStatus: Int32,
+        output: String,
+        didTimeout: Bool,
+        analysis: OutputAnalysis
+    ) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
@@ -112,15 +123,27 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
         // If the pipe buffer (~64KB) fills, the child process blocks on write,
         // waitUntilExit never returns, and we false-timeout.
         var outputData = Data()
+        var analysis = OutputAnalysis()
         let outputLock = NSLock()
         let fileHandle = pipe.fileHandleForReading
-        fileHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            if !data.isEmpty {
-                outputLock.lock()
-                outputData.append(data)
-                outputLock.unlock()
+
+        func absorb(_ data: Data) {
+            guard !data.isEmpty else {
+                return
             }
+
+            outputLock.lock()
+            if captureOutput {
+                outputData.append(data)
+            }
+            if analyzeOutput {
+                analysis.ingest(data)
+            }
+            outputLock.unlock()
+        }
+
+        fileHandle.readabilityHandler = { handle in
+            absorb(handle.availableData)
         }
 
         try process.run()
@@ -145,16 +168,18 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
 
         // Stop reading and collect any remaining data
         fileHandle.readabilityHandler = nil
-        let remaining = fileHandle.readDataToEndOfFile()
+        absorb(fileHandle.readDataToEndOfFile())
+
         outputLock.lock()
-        outputData.append(remaining)
         let finalData = outputData
+        let finalAnalysis = analysis
         outputLock.unlock()
 
         return (
             process.terminationStatus,
-            String(decoding: finalData, as: UTF8.self),
-            didTimeout
+            captureOutput ? String(decoding: finalData, as: UTF8.self) : "",
+            didTimeout,
+            finalAnalysis
         )
     }
 
@@ -174,32 +199,42 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
         return BaselineResult(duration: duration)
     }
 
-    private func didExecuteAtLeastOneTest(_ output: String) -> Bool {
-        if output.range(
-            of: #"Executed\s+[1-9][0-9]*\s+tests"#,
-            options: .regularExpression
-        ) != nil {
-            return true
+    private struct OutputAnalysis: Sendable {
+        var executedAtLeastOneTest = false
+        var indicatesNoTests = false
+        var sawBuildErrorMarker = false
+        var sawBuildCompleteMarker = false
+
+        private var rollingWindow = ""
+
+        mutating func ingest(_ data: Data) {
+            let chunk = String(decoding: data, as: UTF8.self)
+            guard !chunk.isEmpty else {
+                return
+            }
+
+            let scan = rollingWindow + chunk
+            if !executedAtLeastOneTest {
+                executedAtLeastOneTest =
+                    scan.range(of: #"Executed\s+[1-9][0-9]*\s+tests"#, options: .regularExpression) != nil
+                    || scan.range(of: #"Test run with\s+[1-9][0-9]*\s+tests"#, options: .regularExpression) != nil
+                    || scan.contains("Test Case '-[")
+            }
+
+            if !indicatesNoTests {
+                indicatesNoTests =
+                    scan.range(of: #"Test run with\s+0\s+tests"#, options: .regularExpression) != nil
+                    || scan.contains("No matching test cases were run")
+            }
+
+            if !sawBuildErrorMarker {
+                sawBuildErrorMarker = scan.contains("error:")
+            }
+            if !sawBuildCompleteMarker {
+                sawBuildCompleteMarker = scan.contains("Build complete!")
+            }
+
+            rollingWindow = String(scan.suffix(512))
         }
-
-        if output.range(
-            of: #"Test run with\s+[1-9][0-9]*\s+tests"#,
-            options: .regularExpression
-        ) != nil {
-            return true
-        }
-
-        return output.contains("Test Case '-[")
-    }
-
-    private func indicatesNoTests(_ output: String) -> Bool {
-        if output.range(
-            of: #"Test run with\s+0\s+tests"#,
-            options: .regularExpression
-        ) != nil {
-            return true
-        }
-
-        return output.contains("No matching test cases were run")
     }
 }
