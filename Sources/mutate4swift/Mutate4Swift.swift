@@ -37,6 +37,9 @@ struct Mutate4Swift: ParsableCommand {
     @Flag(name: .long, help: "Require a clean git working tree before mutation runs")
     var requireCleanWorkingTree: Bool = false
 
+    @Flag(name: .long, help: "Disable readiness scorecard output")
+    var noReadinessScorecard: Bool = false
+
     @Option(name: .long, help: "Path to .xcworkspace (enables Xcode runner)")
     var xcodeWorkspace: String?
 
@@ -129,131 +132,253 @@ struct Mutate4Swift: ParsableCommand {
             }
         }
 
-        let executionRoot: String
-        let testRunner: TestRunner
-        let coverageProvider: CoverageProvider?
-
-        if usesXcodeRunner {
-            let xcode = try resolveXcodeInvocation()
-            executionRoot = xcode.rootPath
-            testRunner = XcodeTestRunner(invocation: xcode.invocation, verbose: verbose)
-            coverageProvider = nil
-        } else {
-            let resolvedPackage = try resolvePackagePath(startingFrom: resolvedSource)
-            executionRoot = resolvedPackage
-            testRunner = SPMTestRunner(verbose: verbose)
-            coverageProvider = coverage ? SPMCoverageProvider(verbose: verbose) : nil
-        }
-
-        if requireCleanWorkingTree && !isGitWorkingTreeClean(at: executionRoot) {
-            throw Mutate4SwiftError.workingTreeDirty(executionRoot)
-        }
-
-        let orchestrator = Orchestrator(
-            testRunner: testRunner,
-            coverageProvider: coverageProvider,
-            verbose: verbose,
-            timeoutMultiplier: timeoutMultiplier
+        var scorecard = ReadinessScorecard(
+            runnerMode: usesXcodeRunner ? "xcode" : "swiftpm",
+            maxBuildErrorRatio: maxBuildErrorRatio,
+            allMode: all,
+            requireCleanWorkingTree: requireCleanWorkingTree
         )
 
-        if all {
-            let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
-            if sourceFiles.isEmpty {
-                throw Mutate4SwiftError.invalidSourceFile(
-                    "No Swift source files found under \(executionRoot)/Sources"
-                )
+        defer {
+            if !noReadinessScorecard {
+                emitReadinessScorecard(scorecard)
+            }
+        }
+
+        do {
+            let executionRoot: String
+            let testRunner: TestRunner
+            let coverageProvider: CoverageProvider?
+
+            if usesXcodeRunner {
+                let xcode = try resolveXcodeInvocation()
+                executionRoot = xcode.rootPath
+                testRunner = XcodeTestRunner(invocation: xcode.invocation, verbose: verbose)
+                coverageProvider = nil
+            } else {
+                let resolvedPackage = try resolvePackagePath(startingFrom: resolvedSource)
+                executionRoot = resolvedPackage
+                testRunner = SPMTestRunner(verbose: verbose)
+                coverageProvider = coverage ? SPMCoverageProvider(verbose: verbose) : nil
             }
 
-            var reports: [MutationReport] = []
-            reports.reserveCapacity(sourceFiles.count)
-            var baselineCache: [String: BaselineResult] = [:]
-            let mapper = TestFileMapper()
-
-            for (index, sourceFile) in sourceFiles.enumerated() {
-                if verbose {
-                    print("== [\(index + 1)/\(sourceFiles.count)] \(sourceFile) ==")
+            if requireCleanWorkingTree {
+                if isGitWorkingTreeClean(at: executionRoot) {
+                    scorecard.workspaceSafetyGate = .passed("Git working tree is clean")
+                } else {
+                    scorecard.workspaceSafetyGate = .failed("Git working tree is dirty")
+                    throw Mutate4SwiftError.workingTreeDirty(executionRoot)
                 }
+            }
 
-                let resolvedFilter = testFilter ?? mapper.testFilter(forSourceFile: sourceFile)
-                let baselineKey = resolvedFilter ?? "__all_tests__"
-                let cachedBaseline = baselineCache[baselineKey]
+            let orchestrator = Orchestrator(
+                testRunner: testRunner,
+                coverageProvider: coverageProvider,
+                verbose: verbose,
+                timeoutMultiplier: timeoutMultiplier
+            )
 
-                let report = try orchestrator.run(
-                    sourceFile: sourceFile,
-                    packagePath: executionRoot,
-                    testFilter: resolvedFilter,
-                    baselineOverride: cachedBaseline,
-                    resolvedTestFilter: resolvedFilter
-                )
-                reports.append(report)
+            var processedSourceFiles: [String] = []
+            var totalMutations = 0
+            var totalBuildErrors = 0
+            var totalSurvivors = 0
 
-                if cachedBaseline == nil {
-                    baselineCache[baselineKey] = BaselineResult(
-                        duration: report.baselineDuration,
-                        timeoutMultiplier: timeoutMultiplier
+            if all {
+                let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
+                if sourceFiles.isEmpty {
+                    throw Mutate4SwiftError.invalidSourceFile(
+                        "No Swift source files found under \(executionRoot)/Sources"
                     )
                 }
-            }
 
-            let repositoryReport = RepositoryMutationReport(
-                packagePath: executionRoot,
-                fileReports: reports
-            )
+                var reports: [MutationReport] = []
+                reports.reserveCapacity(sourceFiles.count)
+                var baselineCache: [String: BaselineResult] = [:]
+                var baselineExecutions = 0
+                var baselineScopes = Set<String>()
+                let mapper = TestFileMapper()
 
-            if json {
-                let reporter = JSONReporter()
-                print(reporter.report(repositoryReport))
+                for (index, sourceFile) in sourceFiles.enumerated() {
+                    if verbose {
+                        print("== [\(index + 1)/\(sourceFiles.count)] \(sourceFile) ==")
+                    }
+
+                    let resolvedFilter = testFilter ?? mapper.testFilter(forSourceFile: sourceFile)
+                    let baselineKey = resolvedFilter ?? "__all_tests__"
+                    baselineScopes.insert(baselineKey)
+                    let cachedBaseline = baselineCache[baselineKey]
+
+                    let report = try orchestrator.run(
+                        sourceFile: sourceFile,
+                        packagePath: executionRoot,
+                        testFilter: resolvedFilter,
+                        baselineOverride: cachedBaseline,
+                        resolvedTestFilter: resolvedFilter
+                    )
+
+                    reports.append(report)
+                    processedSourceFiles.append(sourceFile)
+                    totalMutations += report.totalMutations
+                    totalBuildErrors += report.buildErrors
+                    totalSurvivors += report.survived
+
+                    if cachedBaseline == nil {
+                        baselineExecutions += 1
+                        baselineCache[baselineKey] = BaselineResult(
+                            duration: report.baselineDuration,
+                            timeoutMultiplier: timeoutMultiplier
+                        )
+                    }
+                }
+
+                let repositoryReport = RepositoryMutationReport(
+                    packagePath: executionRoot,
+                    fileReports: reports
+                )
+
+                if json {
+                    let reporter = JSONReporter()
+                    print(reporter.report(repositoryReport))
+                } else {
+                    let reporter = TextReporter()
+                    print(reporter.report(repositoryReport))
+                }
+
+                if sourceFiles.count <= 1 {
+                    scorecard.scaleEfficiencyGate = .skipped("Single-file batch")
+                } else {
+                    scorecard.scaleEfficiencyGate = .passed(
+                        "Baseline runs: \(baselineExecutions), unique scopes: \(baselineScopes.count), files: \(sourceFiles.count)"
+                    )
+                }
             } else {
-                let reporter = TextReporter()
-                print(reporter.report(repositoryReport))
+                guard let resolvedSource else {
+                    throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
+                }
+
+                let lineSet = parseLines()
+                let report = try orchestrator.run(
+                    sourceFile: resolvedSource,
+                    packagePath: executionRoot,
+                    testFilter: testFilter,
+                    lines: lineSet
+                )
+
+                processedSourceFiles = [resolvedSource]
+                totalMutations = report.totalMutations
+                totalBuildErrors = report.buildErrors
+                totalSurvivors = report.survived
+
+                if json {
+                    let reporter = JSONReporter()
+                    print(reporter.report(report))
+                } else {
+                    let reporter = TextReporter()
+                    print(reporter.report(report))
+                }
             }
 
-            try enforceBuildErrorRatio(
-                totalMutations: repositoryReport.totalMutations,
-                buildErrors: repositoryReport.buildErrors
-            )
+            scorecard.baselineGate = .passed("Baseline tests passed")
+            scorecard.noTestsGate = .passed("At least one test executed per baseline scope")
 
-            if repositoryReport.survived > 0 {
+            if let staleBackupPath = firstStaleBackupPath(for: processedSourceFiles) {
+                scorecard.restoreGuaranteeGate = .failed("Stale backup remains: \(staleBackupPath)")
+                throw Mutate4SwiftError.backupRestoreFailed(staleBackupPath)
+            }
+            scorecard.restoreGuaranteeGate = .passed("No backup artifacts remain")
+
+            let budget = evaluateBuildErrorBudget(
+                totalMutations: totalMutations,
+                buildErrors: totalBuildErrors
+            )
+            scorecard.buildErrorBudgetGate = budget.status
+            if budget.exceeded {
+                throw Mutate4SwiftError.buildErrorRatioExceeded(
+                    actual: budget.actualRatio,
+                    limit: maxBuildErrorRatio
+                )
+            }
+
+            if totalSurvivors > 0 {
                 throw ExitCode(1)
             }
-            return
-        }
-
-        guard let resolvedSource else {
-            throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
-        }
-
-        let lineSet = parseLines()
-        let report = try orchestrator.run(
-            sourceFile: resolvedSource,
-            packagePath: executionRoot,
-            testFilter: testFilter,
-            lines: lineSet
-        )
-
-        if json {
-            let reporter = JSONReporter()
-            print(reporter.report(report))
-        } else {
-            let reporter = TextReporter()
-            print(reporter.report(report))
-        }
-
-        try enforceBuildErrorRatio(
-            totalMutations: report.totalMutations,
-            buildErrors: report.buildErrors
-        )
-
-        if report.survived > 0 {
-            throw ExitCode(1)
+        } catch {
+            applyFailureToScorecard(scorecard: &scorecard, error: error)
+            throw error
         }
     }
 
-    private func enforceBuildErrorRatio(totalMutations: Int, buildErrors: Int) throws {
-        guard totalMutations > 0 else { return }
-        let ratio = Double(buildErrors) / Double(totalMutations)
-        if ratio > maxBuildErrorRatio {
-            throw Mutate4SwiftError.buildErrorRatioExceeded(actual: ratio, limit: maxBuildErrorRatio)
+    private func evaluateBuildErrorBudget(totalMutations: Int, buildErrors: Int) -> (
+        status: ReadinessScorecard.GateStatus,
+        exceeded: Bool,
+        actualRatio: Double
+    ) {
+        guard totalMutations > 0 else {
+            return (.skipped("No mutations discovered"), false, 0)
+        }
+
+        let actualRatio = Double(buildErrors) / Double(totalMutations)
+        if actualRatio <= maxBuildErrorRatio {
+            return (
+                .passed(
+                    "Build errors \(buildErrors)/\(totalMutations) (\(String(format: "%.2f", actualRatio * 100))%) <= \(String(format: "%.2f", maxBuildErrorRatio * 100))%"
+                ),
+                false,
+                actualRatio
+            )
+        }
+
+        return (
+            .failed(
+                "Build errors \(buildErrors)/\(totalMutations) (\(String(format: "%.2f", actualRatio * 100))%) > \(String(format: "%.2f", maxBuildErrorRatio * 100))%"
+            ),
+            true,
+            actualRatio
+        )
+    }
+
+    private func firstStaleBackupPath(for sourceFiles: [String]) -> String? {
+        let uniqueSources = Set(sourceFiles)
+        for sourceFile in uniqueSources.sorted() {
+            let backupPath = sourceFile + ".mutate4swift.backup"
+            if FileManager.default.fileExists(atPath: backupPath) {
+                return backupPath
+            }
+        }
+        return nil
+    }
+
+    private func emitReadinessScorecard(_ scorecard: ReadinessScorecard) {
+        let output = scorecard.render() + "\n"
+        guard let data = output.data(using: .utf8) else { return }
+        FileHandle.standardError.write(data)
+    }
+
+    private func applyFailureToScorecard(scorecard: inout ReadinessScorecard, error: Error) {
+        guard let mutateError = error as? Mutate4SwiftError else {
+            return
+        }
+
+        switch mutateError {
+        case .baselineTestsFailed:
+            scorecard.baselineGate = .failed("Baseline tests failed")
+            if case .skipped = scorecard.noTestsGate {
+                scorecard.noTestsGate = .passed("Tests executed, but baseline assertions failed")
+            }
+        case .noTestsExecuted(let filter):
+            let detail = filter.map { "No tests executed for filter '\($0)'" } ?? "No tests executed"
+            scorecard.baselineGate = .failed(detail)
+            scorecard.noTestsGate = .failed(detail)
+        case .buildErrorRatioExceeded(let actual, let limit):
+            scorecard.buildErrorBudgetGate = .failed(
+                "Build error ratio \(String(format: "%.2f", actual * 100))% exceeded \(String(format: "%.2f", limit * 100))%"
+            )
+        case .backupRestoreFailed(let path):
+            scorecard.restoreGuaranteeGate = .failed("Stale backup remains at \(path)")
+        case .workingTreeDirty:
+            scorecard.workspaceSafetyGate = .failed("Working tree is dirty")
+        default:
+            break
         }
     }
 
