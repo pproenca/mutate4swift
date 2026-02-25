@@ -54,6 +54,37 @@ final class MutationApplicatorTests: XCTestCase {
         XCTAssertEqual(mutated, "let x = flag")
     }
 
+    func testApplyTryMutation() {
+        let source = "let x = try parse()"
+        let discoverer = MutationDiscoverer(source: source)
+        let sites = discoverer.discoverSites()
+            .filter { $0.mutationOperator == .tryMutation && $0.mutatedText == "try?" }
+        XCTAssertEqual(sites.count, 1)
+
+        let mutated = applicator.apply(sites[0], to: source)
+        XCTAssertEqual(mutated, "let x = try? parse()")
+    }
+
+    func testApplyTernarySwapMutation() {
+        let source = "let status = isActive ? \"on\" : \"off\""
+        let discoverer = MutationDiscoverer(source: source)
+        let sites = discoverer.discoverSites().filter { $0.mutationOperator == .ternarySwap }
+        XCTAssertEqual(sites.count, 1)
+
+        let mutated = applicator.apply(sites[0], to: source)
+        XCTAssertEqual(mutated, "let status = isActive ? \"off\" : \"on\"")
+    }
+
+    func testApplyStringLiteralMutation() {
+        let source = "let key = \"user_id\""
+        let discoverer = MutationDiscoverer(source: source)
+        let sites = discoverer.discoverSites().filter { $0.mutationOperator == .stringLiteral }
+        XCTAssertEqual(sites.count, 1)
+
+        let mutated = applicator.apply(sites[0], to: source)
+        XCTAssertEqual(mutated, "let key = \"\"")
+    }
+
     func testApplyDoesNotCorruptMultibyteUTF8() {
         // Use true in actual code, not in a comment
         let source = "let emoji = \"🎉\"; let flag = true"

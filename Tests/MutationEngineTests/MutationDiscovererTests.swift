@@ -41,6 +41,15 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(arithmetic[0].mutatedText, "*")
     }
 
+    func testArithmeticModuloToMultiply() {
+        let source = "let x = a % b"
+        let sites = discover(source)
+        let arithmetic = sites.filter { $0.mutationOperator == .arithmetic }
+        XCTAssertEqual(arithmetic.count, 1)
+        XCTAssertEqual(arithmetic[0].originalText, "%")
+        XCTAssertEqual(arithmetic[0].mutatedText, "*")
+    }
+
     // MARK: - Comparison
 
     func testComparisonOperators() {
@@ -74,6 +83,62 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(sites.count, 1)
         XCTAssertEqual(sites[0].originalText, "||")
         XCTAssertEqual(sites[0].mutatedText, "&&")
+    }
+
+    // MARK: - Bitwise
+
+    func testBitwiseOperators() {
+        let pairs: [(String, String)] = [
+            ("&", "|"),
+            ("|", "&"),
+            ("^", "&"),
+            ("<<", ">>"),
+            (">>", "<<"),
+        ]
+
+        for (original, expected) in pairs {
+            let source = "let x = a \(original) b"
+            let sites = discover(source).filter { $0.mutationOperator == .bitwise }
+            XCTAssertEqual(sites.count, 1, "Expected 1 bitwise site for \(original)")
+            XCTAssertEqual(sites[0].originalText, original)
+            XCTAssertEqual(sites[0].mutatedText, expected)
+        }
+    }
+
+    func testBitwisePrefixNotRemoval() {
+        let source = "let x = ~mask"
+        let sites = discover(source).filter { $0.mutationOperator == .bitwise }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "~")
+        XCTAssertEqual(sites[0].mutatedText, "")
+    }
+
+    // MARK: - Compound assignment
+
+    func testCompoundAssignmentOperators() {
+        let pairs: [(String, String)] = [
+            ("+=", "-="),
+            ("-=", "+="),
+            ("*=", "/="),
+            ("/=", "*="),
+            ("&=", "|="),
+            ("|=", "&="),
+            ("<<=", ">>="),
+            (">>=", "<<="),
+        ]
+
+        for (original, expected) in pairs {
+            let source = """
+            func update() {
+                var x = 1
+                x \(original) 2
+            }
+            """
+            let sites = discover(source).filter { $0.mutationOperator == .compoundAssignment }
+            XCTAssertEqual(sites.count, 1, "Expected 1 compound assignment site for \(original)")
+            XCTAssertEqual(sites[0].originalText, original)
+            XCTAssertEqual(sites[0].mutatedText, expected)
+        }
     }
 
     // MARK: - Boolean
@@ -218,6 +283,86 @@ final class MutationDiscovererTests: XCTestCase {
         """
         // Should NOT produce a conditionNegate (unaryRemoval covers the `!`)
         let sites = discover(source).filter { $0.mutationOperator == .conditionNegate }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    // MARK: - Try mutation
+
+    func testTryProducesTryOptionalAndTryForce() {
+        let source = """
+        func foo() throws -> Int {
+            return try bar()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .tryMutation }
+        XCTAssertEqual(sites.count, 2)
+        let mutated = Set(sites.map { $0.mutatedText })
+        XCTAssertEqual(mutated, Set(["try?", "try!"]))
+    }
+
+    func testTryOptionalToTryForce() {
+        let source = """
+        func foo() {
+            _ = try? bar()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .tryMutation }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "?")
+        XCTAssertEqual(sites[0].mutatedText, "!")
+    }
+
+    func testTryForceToTryOptional() {
+        let source = """
+        func foo() {
+            _ = try! bar()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .tryMutation }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "!")
+        XCTAssertEqual(sites[0].mutatedText, "?")
+    }
+
+    // MARK: - Ternary swap
+
+    func testTernarySwap() {
+        let source = "let status = isActive ? \"on\" : \"off\""
+        let sites = discover(source).filter { $0.mutationOperator == .ternarySwap }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "isActive ? \"on\" : \"off\"")
+        XCTAssertEqual(sites[0].mutatedText, "isActive ? \"off\" : \"on\"")
+    }
+
+    // MARK: - String literal
+
+    func testStringLiteralToEmptyString() {
+        let source = "let key = \"user_id\""
+        let sites = discover(source).filter { $0.mutationOperator == .stringLiteral }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "\"user_id\"")
+        XCTAssertEqual(sites[0].mutatedText, "\"\"")
+    }
+
+    func testStringLiteralSkipsInterpolation() {
+        let source = "let msg = \"hello \\(name)\""
+        let sites = discover(source).filter { $0.mutationOperator == .stringLiteral }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    func testStringLiteralSkipsMultiline() {
+        let source = """
+        let msg = \"\"\"
+        hello
+        \"\"\"
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .stringLiteral }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    func testStringLiteralSkipsAlreadyEmpty() {
+        let source = "let msg = \"\""
+        let sites = discover(source).filter { $0.mutationOperator == .stringLiteral }
         XCTAssertEqual(sites.count, 0)
     }
 

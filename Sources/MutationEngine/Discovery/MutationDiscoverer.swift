@@ -3,10 +3,12 @@ import SwiftParser
 
 public final class MutationDiscoverer: SyntaxVisitor {
     private var sites: [MutationSite] = []
+    private let source: String
     private let sourceLocationConverter: SourceLocationConverter
 
     public init(source: String, fileName: String = "<input>") {
         let tree = Parser.parse(source: source)
+        self.source = source
         self.sourceLocationConverter = SourceLocationConverter(fileName: fileName, tree: tree)
         super.init(viewMode: .sourceAccurate)
         walk(tree)
@@ -16,7 +18,7 @@ public final class MutationDiscoverer: SyntaxVisitor {
         return sites
     }
 
-    // MARK: - Binary operators (arithmetic, comparison, logical, range)
+    // MARK: - Binary operators (arithmetic, comparison, logical, bitwise, range, compound assignment)
     // SwiftSyntax 600 produces SequenceExprSyntax with BinaryOperatorExprSyntax children.
 
     override public func visit(_ node: BinaryOperatorExprSyntax) -> SyntaxVisitorContinueKind {
@@ -61,7 +63,7 @@ public final class MutationDiscoverer: SyntaxVisitor {
         return .visitChildren
     }
 
-    // MARK: - Prefix operators (! removal, +/- sign swap)
+    // MARK: - Prefix operators (! removal, +/- sign swap, ~ removal)
 
     override public func visit(_ node: PrefixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
         let opText = node.operator.text
@@ -86,7 +88,99 @@ public final class MutationDiscoverer: SyntaxVisitor {
                 mutatedText: "+",
                 operator: .unarySign
             )
+        } else if opText == "~" {
+            addSite(
+                token: node.operator,
+                originalText: "~",
+                mutatedText: "",
+                operator: .bitwise
+            )
         }
+        return .visitChildren
+    }
+
+    // MARK: - Try mutation (try/try?/try!)
+
+    override public func visit(_ node: TryExprSyntax) -> SyntaxVisitorContinueKind {
+        if let marker = node.questionOrExclamationMark {
+            let opText = marker.text
+            let mutated = opText == "?" ? "!" : "?"
+            addSite(
+                token: marker,
+                originalText: opText,
+                mutatedText: mutated,
+                operator: .tryMutation
+            )
+        } else {
+            addSite(
+                token: node.tryKeyword,
+                originalText: "try",
+                mutatedText: "try?",
+                operator: .tryMutation
+            )
+            addSite(
+                token: node.tryKeyword,
+                originalText: "try",
+                mutatedText: "try!",
+                operator: .tryMutation
+            )
+        }
+
+        return .visitChildren
+    }
+
+    // MARK: - Ternary swap
+
+    override public func visit(_ node: TernaryExprSyntax) -> SyntaxVisitorContinueKind {
+        addTernarySwapSite(
+            condition: node.condition,
+            thenExpression: node.thenExpression,
+            elseExpression: node.elseExpression
+        )
+        return .visitChildren
+    }
+
+    override public func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
+        // Parser trees contain unresolved ternaries in sequence expressions:
+        // `condition`, `UnresolvedTernaryExprSyntax`, `elseExpression`.
+        let elements = Array(node.elements)
+        if elements.count == 3,
+           let unresolved = elements[1].as(UnresolvedTernaryExprSyntax.self) {
+            addTernarySwapSite(
+                condition: elements[0],
+                thenExpression: unresolved.thenExpression,
+                elseExpression: elements[2]
+            )
+        }
+        return .visitChildren
+    }
+
+    // MARK: - String literal mutation
+
+    override public func visit(_ node: StringLiteralExprSyntax) -> SyntaxVisitorContinueKind {
+        guard node.openingQuote.text == "\"",
+              node.closingQuote.text == "\"",
+              !node.segments.contains(where: { $0.is(ExpressionSegmentSyntax.self) }) else {
+            return .visitChildren
+        }
+
+        let start = node.positionAfterSkippingLeadingTrivia
+        let end = node.endPositionBeforeTrailingTrivia
+        let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
+            ?? node.description.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard originalText != "\"\"" else {
+            return .visitChildren
+        }
+
+        addSite(
+            start: start,
+            end: end,
+            originalText: originalText,
+            mutatedText: "\"\"",
+            operator: .stringLiteral
+        )
+
         return .visitChildren
     }
 
@@ -187,6 +281,28 @@ public final class MutationDiscoverer: SyntaxVisitor {
         ))
     }
 
+    private func addTernarySwapSite(
+        condition: ExprSyntax,
+        thenExpression: ExprSyntax,
+        elseExpression: ExprSyntax
+    ) {
+        let start = condition.positionAfterSkippingLeadingTrivia
+        let end = elseExpression.endPositionBeforeTrailingTrivia
+        let conditionText = condition.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let thenText = thenExpression.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let elseText = elseExpression.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
+            ?? "\(conditionText) ? \(thenText) : \(elseText)"
+
+        addSite(
+            start: start,
+            end: end,
+            originalText: originalText,
+            mutatedText: "\(conditionText) ? \(elseText) : \(thenText)",
+            operator: .ternarySwap
+        )
+    }
+
     // MARK: - Helpers
 
     private func addSite(
@@ -209,6 +325,44 @@ public final class MutationDiscoverer: SyntaxVisitor {
         ))
     }
 
+    private func addSite(
+        start: AbsolutePosition,
+        end: AbsolutePosition,
+        originalText: String,
+        mutatedText: String,
+        operator mutationOp: MutationOperator
+    ) {
+        let loc = sourceLocationConverter.location(for: start)
+
+        sites.append(MutationSite(
+            mutationOperator: mutationOp,
+            line: loc.line,
+            column: loc.column,
+            utf8Offset: start.utf8Offset,
+            utf8Length: end.utf8Offset - start.utf8Offset,
+            originalText: originalText,
+            mutatedText: mutatedText
+        ))
+    }
+
+    private func sourceSlice(startOffset: Int, endOffset: Int) -> String? {
+        guard startOffset >= 0,
+              endOffset >= startOffset,
+              endOffset <= source.utf8.count else {
+            return nil
+        }
+
+        let utf8View = source.utf8
+        guard let startUTF8 = utf8View.index(utf8View.startIndex, offsetBy: startOffset, limitedBy: utf8View.endIndex),
+              let endUTF8 = utf8View.index(utf8View.startIndex, offsetBy: endOffset, limitedBy: utf8View.endIndex),
+              let startIndex = String.Index(startUTF8, within: source),
+              let endIndex = String.Index(endUTF8, within: source) else {
+            return nil
+        }
+
+        return String(source[startIndex..<endIndex])
+    }
+
     // MARK: - Mutation tables
 
     private static let infixMutations: [String: [(String, MutationOperator)]] = [
@@ -217,6 +371,7 @@ public final class MutationDiscoverer: SyntaxVisitor {
         "-": [("+", .arithmetic)],
         "*": [("/", .arithmetic)],
         "/": [("*", .arithmetic)],
+        "%": [("*", .arithmetic)],
         // Comparison
         ">": [(">=", .comparison)],
         ">=": [(">", .comparison)],
@@ -227,6 +382,21 @@ public final class MutationDiscoverer: SyntaxVisitor {
         // Logical
         "&&": [("||", .logical)],
         "||": [("&&", .logical)],
+        // Bitwise
+        "&": [("|", .bitwise)],
+        "|": [("&", .bitwise)],
+        "^": [("&", .bitwise)],
+        "<<": [(">>", .bitwise)],
+        ">>": [("<<", .bitwise)],
+        // Compound assignment
+        "+=": [("-=", .compoundAssignment)],
+        "-=": [("+=", .compoundAssignment)],
+        "*=": [("/=", .compoundAssignment)],
+        "/=": [("*=", .compoundAssignment)],
+        "&=": [("|=", .compoundAssignment)],
+        "|=": [("&=", .compoundAssignment)],
+        "<<=": [(">>=", .compoundAssignment)],
+        ">>=": [("<<=", .compoundAssignment)],
         // Range
         "..<": [("...", .range)],
         "...": [("..<", .range)],
