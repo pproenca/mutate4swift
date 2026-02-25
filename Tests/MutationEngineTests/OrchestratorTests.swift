@@ -18,7 +18,7 @@ final class OrchestratorTests: XCTestCase {
             XCTAssertEqual(report.survived, 0)
             XCTAssertEqual(report.buildErrors, 0)
             XCTAssertEqual(runner.calls.count, 2)
-            XCTAssertEqual(runner.calls[0].filter, "SampleTests")
+            XCTAssertNil(runner.calls[0].filter)
             XCTAssertEqual(runner.calls[0].timeout, 600)
             XCTAssertEqual(runner.calls[1].timeout, 30.0)
 
@@ -56,6 +56,23 @@ final class OrchestratorTests: XCTestCase {
                     XCTFail("Expected baselineTestsFailed, got \(error)")
                     return
                 }
+            }
+        }
+    }
+
+    func testRunThrowsWhenBaselineExecutesNoTests() throws {
+        try withTemporarySourceFile(contents: "let flag = true") { sourceFile in
+            let runner = MockTestRunner(results: [.success(.noTests)])
+            let orchestrator = Orchestrator(testRunner: runner)
+
+            XCTAssertThrowsError(
+                try orchestrator.run(sourceFile: sourceFile.path, packagePath: "/tmp/pkg")
+            ) { error in
+                guard case .noTestsExecuted(let filter) = error as? Mutate4SwiftError else {
+                    XCTFail("Expected noTestsExecuted, got \(error)")
+                    return
+                }
+                XCTAssertNil(filter)
             }
         }
     }

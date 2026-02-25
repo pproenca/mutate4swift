@@ -9,6 +9,12 @@ public struct TestFileMapper: Sendable {
     public func testFilter(forSourceFile sourceFile: String) -> String? {
         let url = URL(fileURLWithPath: sourceFile)
         let fileName = url.deletingPathExtension().lastPathComponent
+        guard let packagePath = packagePath(forSourceFile: sourceFile) else {
+            return nil
+        }
+        guard testFile(forSourceFile: sourceFile, packagePath: packagePath) != nil else {
+            return nil
+        }
         return "\(fileName)Tests"
     }
 
@@ -33,5 +39,20 @@ public struct TestFileMapper: Sendable {
             .appending("/\(testTargetName)/\(testFileName)")
 
         return FileManager.default.fileExists(atPath: testPath) ? testPath : nil
+    }
+
+    private func packagePath(forSourceFile sourceFile: String) -> String? {
+        let sourceURL = URL(fileURLWithPath: sourceFile).standardizedFileURL
+        var current = sourceURL.deletingLastPathComponent()
+
+        while current.path != "/" {
+            let packageSwift = current.appendingPathComponent("Package.swift").path
+            if FileManager.default.fileExists(atPath: packageSwift) {
+                return current.path
+            }
+            current = current.deletingLastPathComponent()
+        }
+
+        return nil
     }
 }

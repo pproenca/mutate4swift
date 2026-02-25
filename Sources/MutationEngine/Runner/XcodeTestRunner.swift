@@ -1,29 +1,58 @@
 import Foundation
 
-public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable {
-    private let verbose: Bool
+public struct XcodeTestInvocation: Sendable {
+    public let workspacePath: String?
+    public let projectPath: String?
+    public let scheme: String
+    public let destination: String?
+    public let testPlan: String?
+    public let configuration: String?
+    public let derivedDataPath: String?
 
-    public init(verbose: Bool = false) {
+    public init(
+        workspacePath: String?,
+        projectPath: String?,
+        scheme: String,
+        destination: String?,
+        testPlan: String?,
+        configuration: String?,
+        derivedDataPath: String?
+    ) {
+        self.workspacePath = workspacePath
+        self.projectPath = projectPath
+        self.scheme = scheme
+        self.destination = destination
+        self.testPlan = testPlan
+        self.configuration = configuration
+        self.derivedDataPath = derivedDataPath
+    }
+}
+
+public final class XcodeTestRunner: BaselineCapableTestRunner, @unchecked Sendable {
+    private let invocation: XcodeTestInvocation
+    private let verbose: Bool
+    private let executablePath: String
+
+    public init(
+        invocation: XcodeTestInvocation,
+        verbose: Bool = false,
+        executablePath: String = "/usr/bin/xcodebuild"
+    ) {
+        self.invocation = invocation
         self.verbose = verbose
+        self.executablePath = executablePath
     }
 
     public func runTests(packagePath: String, filter: String?, timeout: TimeInterval) throws -> TestRunResult {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-
-        var args = ["test", "--package-path", packagePath]
-        if let filter = filter {
-            args += ["--filter", filter]
-        }
-        process.arguments = args
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.currentDirectoryURL = URL(fileURLWithPath: packagePath, isDirectory: true)
+        process.arguments = buildArguments(filter: filter)
 
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
 
-        // Drain pipe output on a background thread to prevent buffer deadlock.
-        // If the pipe buffer (~64KB) fills, the child process blocks on write,
-        // waitUntilExit never returns, and we false-timeout.
         var outputData = Data()
         let outputLock = NSLock()
         let fileHandle = pipe.fileHandleForReading
@@ -38,7 +67,6 @@ public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable
 
         try process.run()
 
-        // Timeout handling
         let deadline = DispatchTime.now() + timeout
         let group = DispatchGroup()
         group.enter()
@@ -56,7 +84,6 @@ public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable
             process.interrupt()
         }
 
-        // Stop reading and collect any remaining data
         fileHandle.readabilityHandler = nil
         let remaining = fileHandle.readDataToEndOfFile()
         outputLock.lock()
@@ -87,15 +114,17 @@ public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable
             return .noTests
         }
 
-        // Check if it's a build error vs test failure
-        if output.contains("error:") && !output.contains("Build complete!") {
+        if output.contains("** BUILD FAILED **") {
+            return .buildError
+        }
+
+        if output.contains("error:"), !output.contains("** TEST FAILED **") {
             return .buildError
         }
 
         return .failed
     }
 
-    /// Runs baseline tests, returning duration.
     public func runBaseline(packagePath: String, filter: String?) throws -> BaselineResult {
         let start = Date()
         let result = try runTests(packagePath: packagePath, filter: filter, timeout: 600)
@@ -109,6 +138,40 @@ public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable
         }
 
         return BaselineResult(duration: duration)
+    }
+
+    private func buildArguments(filter: String?) -> [String] {
+        var args: [String] = ["test"]
+
+        if let workspacePath = invocation.workspacePath {
+            args += ["-workspace", workspacePath]
+        } else if let projectPath = invocation.projectPath {
+            args += ["-project", projectPath]
+        }
+
+        args += ["-scheme", invocation.scheme]
+
+        if let destination = invocation.destination {
+            args += ["-destination", destination]
+        }
+
+        if let testPlan = invocation.testPlan {
+            args += ["-testPlan", testPlan]
+        }
+
+        if let configuration = invocation.configuration {
+            args += ["-configuration", configuration]
+        }
+
+        if let derivedDataPath = invocation.derivedDataPath {
+            args += ["-derivedDataPath", derivedDataPath]
+        }
+
+        if let filter, !filter.isEmpty {
+            args.append("-only-testing:\(filter)")
+        }
+
+        return args
     }
 
     private func didExecuteAtLeastOneTest(_ output: String) -> Bool {
@@ -131,12 +194,19 @@ public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable
 
     private func indicatesNoTests(_ output: String) -> Bool {
         if output.range(
+            of: #"Executed\s+0\s+tests"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+
+        if output.range(
             of: #"Test run with\s+0\s+tests"#,
             options: .regularExpression
         ) != nil {
             return true
         }
 
-        return output.contains("No matching test cases were run")
+        return output.contains("No tests were run")
     }
 }

@@ -2,6 +2,15 @@ import Foundation
 
 /// Discovers Swift source files for repository-wide mutation runs.
 public struct SourceFileDiscoverer: Sendable {
+    private static let excludedPathComponents: Set<String> = [
+        "Generated",
+        "generated",
+        "Vendor",
+        "vendor",
+        "Pods",
+        "Carthage",
+    ]
+
     public init() {}
 
     /// Returns absolute paths of Swift files under `<packagePath>/Sources`.
@@ -29,6 +38,10 @@ public struct SourceFileDiscoverer: Sendable {
             let path = fileURL.path
             guard path.hasSuffix(".swift"),
                   !path.hasSuffix(".mutate4swift.backup") else {
+                continue
+            }
+
+            if !Set(fileURL.pathComponents).isDisjoint(with: Self.excludedPathComponents) {
                 continue
             }
 

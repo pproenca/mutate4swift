@@ -22,7 +22,9 @@ public final class Orchestrator: @unchecked Sendable {
         sourceFile: String,
         packagePath: String,
         testFilter: String? = nil,
-        lines: Set<Int>? = nil
+        lines: Set<Int>? = nil,
+        baselineOverride: BaselineResult? = nil,
+        resolvedTestFilter: String? = nil
     ) throws -> MutationReport {
         let fileManager = SourceFileManager(filePath: sourceFile)
 
@@ -65,16 +67,26 @@ public final class Orchestrator: @unchecked Sendable {
         }
 
         // Step 7: Run baseline
-        if verbose { print("Running baseline tests...") }
-        let autoFilter = testFilter ?? TestFileMapper().testFilter(forSourceFile: sourceFile)
+        let autoFilter = resolvedTestFilter ?? testFilter ?? TestFileMapper().testFilter(forSourceFile: sourceFile)
         let baseline: BaselineResult
-        if let spmRunner = testRunner as? SPMTestRunner {
-            baseline = try spmRunner.runBaseline(packagePath: packagePath, filter: autoFilter)
+        if let baselineOverride {
+            baseline = baselineOverride
+            if verbose {
+                print("Using cached baseline (\(String(format: "%.2f", baseline.duration))s, timeout: \(String(format: "%.2f", baseline.timeout))s)")
+            }
+        } else if let baselineRunner = testRunner as? BaselineCapableTestRunner {
+            if verbose { print("Running baseline tests...") }
+            let rawBaseline = try baselineRunner.runBaseline(packagePath: packagePath, filter: autoFilter)
+            baseline = BaselineResult(duration: rawBaseline.duration, timeoutMultiplier: timeoutMultiplier)
         } else {
+            if verbose { print("Running baseline tests...") }
             let start = Date()
             let result = try testRunner.runTests(packagePath: packagePath, filter: autoFilter, timeout: 600)
             let duration = Date().timeIntervalSince(start)
             guard result == .passed else {
+                if result == .noTests {
+                    throw Mutate4SwiftError.noTestsExecuted(autoFilter)
+                }
                 throw Mutate4SwiftError.baselineTestsFailed
             }
             baseline = BaselineResult(duration: duration, timeoutMultiplier: timeoutMultiplier)
@@ -118,6 +130,11 @@ public final class Orchestrator: @unchecked Sendable {
             case .timeout:
                 outcome = .timeout
             case .buildError:
+                outcome = .buildError
+            case .noTests:
+                if verbose {
+                    print("  → NO_TESTS (classifying as BUILD_ERROR)")
+                }
                 outcome = .buildError
             }
 

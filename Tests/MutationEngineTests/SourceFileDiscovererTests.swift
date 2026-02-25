@@ -38,6 +38,22 @@ final class SourceFileDiscovererTests: XCTestCase {
         }
     }
 
+    func testDiscoverSourceFilesSkipsGeneratedAndVendorDirectories() throws {
+        try withTemporaryDirectory { packageRoot in
+            let main = packageRoot.appendingPathComponent("Sources/App/Core.swift")
+            let generated = packageRoot.appendingPathComponent("Sources/App/Generated/Auto.swift")
+            let vendor = packageRoot.appendingPathComponent("Sources/App/vendor/ThirdParty.swift")
+
+            try writeFile(at: main)
+            try writeFile(at: generated)
+            try writeFile(at: vendor)
+
+            let files = try discoverer.discoverSourceFiles(in: packageRoot.path)
+            XCTAssertEqual(files.count, 1)
+            XCTAssertTrue(files[0].hasSuffix("Core.swift"))
+        }
+    }
+
     private func withTemporaryDirectory(_ body: (URL) throws -> Void) throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("SourceFileDiscovererTests-\(UUID().uuidString)")

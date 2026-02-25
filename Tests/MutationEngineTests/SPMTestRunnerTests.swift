@@ -54,6 +54,21 @@ final class SPMTestRunnerTests: XCTestCase {
         }
     }
 
+    func testRunTestsReturnsNoTestsWhenFilterMatchesNothing() throws {
+        try withTemporaryPackage(
+            source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
+            testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
+        ) { packagePath in
+            let runner = SPMTestRunner()
+            let result = try runner.runTests(
+                packagePath: packagePath.path,
+                filter: "MissingTests",
+                timeout: 60
+            )
+            XCTAssertEqual(result, .noTests)
+        }
+    }
+
     func testRunBaselineSuccessAndFailure() throws {
         try withTemporaryPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
@@ -76,6 +91,24 @@ final class SPMTestRunnerTests: XCTestCase {
                     XCTFail("Expected baselineTestsFailed, got \(error)")
                     return
                 }
+            }
+        }
+    }
+
+    func testRunBaselineThrowsWhenNoTestsExecuted() throws {
+        try withTemporaryPackage(
+            source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
+            testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
+        ) { packagePath in
+            let runner = SPMTestRunner()
+            XCTAssertThrowsError(
+                try runner.runBaseline(packagePath: packagePath.path, filter: "MissingTests")
+            ) { error in
+                guard case .noTestsExecuted(let filter) = error as? Mutate4SwiftError else {
+                    XCTFail("Expected noTestsExecuted, got \(error)")
+                    return
+                }
+                XCTAssertEqual(filter, "MissingTests")
             }
         }
     }
