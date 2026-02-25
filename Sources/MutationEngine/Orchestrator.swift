@@ -1,5 +1,14 @@
 import Foundation
 
+public enum OrchestratorProgressEvent: Sendable {
+    case candidateSitesDiscovered(count: Int)
+    case baselineStarted(filter: String?)
+    case baselineFinished(duration: TimeInterval, timeout: TimeInterval)
+    case mutationEvaluated(index: Int, total: Int, site: MutationSite, outcome: MutationOutcome)
+}
+
+public typealias OrchestratorProgressHandler = (OrchestratorProgressEvent) -> Void
+
 public final class Orchestrator: @unchecked Sendable {
     private let testRunner: TestRunner
     private let coverageProvider: CoverageProvider?
@@ -8,6 +17,7 @@ public final class Orchestrator: @unchecked Sendable {
     private let timeoutRetries: Int
     private let buildFirstSampleSize: Int
     private let buildFirstErrorRatio: Double
+    private let progressHandler: OrchestratorProgressHandler?
 
     public init(
         testRunner: TestRunner,
@@ -16,7 +26,8 @@ public final class Orchestrator: @unchecked Sendable {
         timeoutMultiplier: Double = 10.0,
         timeoutRetries: Int = 0,
         buildFirstSampleSize: Int = 6,
-        buildFirstErrorRatio: Double = 0.5
+        buildFirstErrorRatio: Double = 0.5,
+        progressHandler: OrchestratorProgressHandler? = nil
     ) {
         self.testRunner = testRunner
         self.coverageProvider = coverageProvider
@@ -25,6 +36,7 @@ public final class Orchestrator: @unchecked Sendable {
         self.timeoutRetries = max(0, timeoutRetries)
         self.buildFirstSampleSize = max(1, buildFirstSampleSize)
         self.buildFirstErrorRatio = max(0, min(1, buildFirstErrorRatio))
+        self.progressHandler = progressHandler
     }
 
     public func run(
@@ -75,6 +87,8 @@ public final class Orchestrator: @unchecked Sendable {
             }
         }
 
+        progressHandler?(.candidateSitesDiscovered(count: sites.count))
+
         if sites.isEmpty {
             if verbose { print("No mutation sites after filters; skipping baseline and test runs") }
             try fileManager.restore()
@@ -87,6 +101,7 @@ public final class Orchestrator: @unchecked Sendable {
 
         // Step 7: Run baseline
         let autoFilter = resolvedTestFilter ?? testFilter ?? TestFileMapper().testFilter(forSourceFile: sourceFile)
+        progressHandler?(.baselineStarted(filter: autoFilter))
         let baseline: BaselineResult
         if let baselineOverride {
             baseline = baselineOverride
@@ -110,6 +125,7 @@ public final class Orchestrator: @unchecked Sendable {
             }
             baseline = BaselineResult(duration: duration, timeoutMultiplier: timeoutMultiplier)
         }
+        progressHandler?(.baselineFinished(duration: baseline.duration, timeout: baseline.timeout))
 
         if verbose { print("Baseline passed in \(String(format: "%.2f", baseline.duration))s, timeout: \(String(format: "%.2f", baseline.timeout))s") }
 
@@ -182,6 +198,14 @@ public final class Orchestrator: @unchecked Sendable {
             }
 
             results.append(MutationResult(site: site, outcome: outcome))
+            progressHandler?(
+                .mutationEvaluated(
+                    index: index + 1,
+                    total: sites.count,
+                    site: site,
+                    outcome: outcome
+                )
+            )
 
             if verbose {
                 print("  → \(outcome.rawValue.uppercased())")

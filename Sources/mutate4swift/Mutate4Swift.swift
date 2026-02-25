@@ -7,80 +7,180 @@ struct Mutate4Swift: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mutate4swift",
         abstract: "Mutation testing for SwiftPM and Xcode projects",
+        discussion: """
+        QUICK START:
+          mutate4swift Sources/App/Feature.swift
+          mutate4swift --all --jobs 4
+          mutate4swift --plan --all --jobs 4
+          mutate4swift Sources/App/Feature.swift --xcode-project App.xcodeproj --xcode-scheme AppTests
+
+        OUTPUT:
+          Reports are written to stdout.
+          Live progress is written to stderr (disable with --no-progress).
+          Use --json for machine-readable report output.
+        """,
         version: "0.1.1"
     )
 
-    @Argument(help: "Path to the Swift source file to mutate (omit when using --all)")
-    var sourceFile: String?
+    struct TargetOptions: ParsableArguments {
+        @Argument(
+            help: "Swift source file to mutate. Omit when using --all."
+        )
+        var sourceFile: String?
 
-    @Flag(name: .long, help: "Mutate all Swift source files under Sources/ (SwiftPM mode only)")
-    var all: Bool = false
+        @Flag(
+            name: .long,
+            help: "Mutate all Swift files under Sources/ (SwiftPM mode only)."
+        )
+        var all: Bool = false
 
-    @Flag(name: .long, help: "Analyze mutation strategy and exit without mutating files")
-    var strategyReport: Bool = false
+        @Flag(
+            name: [.customLong("plan"), .long],
+            help: "Analyze mutation strategy and exit without mutating files."
+        )
+        var strategyReport: Bool = false
 
-    @Option(name: .long, help: "Number of worker buckets for --all and --strategy-report (default: 1)")
-    var jobs: Int = 1
+        @Option(
+            name: .long,
+            help: "Only mutate these 1-based lines (comma-separated)."
+        )
+        var lines: String?
+    }
 
-    @Option(name: .long, help: "SPM package root (auto-detected if omitted)")
-    var packagePath: String?
+    struct ExecutionOptions: ParsableArguments {
+        @Option(
+            name: [.customLong("workers"), .long],
+            help: ArgumentHelp("Worker buckets used for --all and --plan.", valueName: "count")
+        )
+        var jobs: Int = 1
 
-    @Option(name: .long, help: "Filter test cases (SPM: swift test --filter, Xcode: only-testing identifier)")
-    var testFilter: String?
+        @Option(
+            name: [.customLong("project"), .long],
+            help: ArgumentHelp("SwiftPM package root. Auto-detected when omitted.", valueName: "path")
+        )
+        var packagePath: String?
 
-    @Option(name: .long, help: "Only test mutations on these lines (comma-separated)")
-    var lines: String?
+        @Option(
+            name: [.customLong("tests"), .long],
+            help: ArgumentHelp("Test filter (SwiftPM --filter / Xcode only-testing).", valueName: "filter")
+        )
+        var testFilter: String?
 
-    @Option(name: .long, help: "Timeout multiplier (default: 10)")
-    var timeoutMultiplier: Double = 10.0
+        @Flag(
+            name: .long,
+            help: "Use code coverage to skip untested lines (SwiftPM mode only)."
+        )
+        var coverage: Bool = false
+    }
 
-    @Option(name: .long, help: "Retries after timeout before classifying as timeout (default: 1)")
-    var timeoutRetries: Int = 1
+    struct SafeguardOptions: ParsableArguments {
+        @Option(
+            name: .long,
+            help: "Maximum allowed build-error ratio in [0,1]."
+        )
+        var maxBuildErrorRatio: Double = 0.25
 
-    @Option(name: .long, help: "Mutation sample size before enabling build-first mode (default: 6)")
-    var buildFirstSampleSize: Int = 6
+        @Flag(
+            name: .long,
+            help: "Require a clean git working tree before mutation runs."
+        )
+        var requireCleanWorkingTree: Bool = false
+    }
 
-    @Option(name: .long, help: "Build-error ratio threshold to enable build-first mode in [0,1] (default: 0.5)")
-    var buildFirstErrorRatio: Double = 0.5
+    struct XcodeOptions: ParsableArguments {
+        @Option(name: .long, help: "Path to .xcworkspace.")
+        var xcodeWorkspace: String?
 
-    @Flag(name: .long, help: "Use code coverage to skip untested lines (SwiftPM mode only)")
-    var coverage: Bool = false
+        @Option(name: .long, help: "Path to .xcodeproj.")
+        var xcodeProject: String?
 
-    @Option(name: .long, help: "Maximum allowed build-error ratio in [0,1] (default: 0.25)")
-    var maxBuildErrorRatio: Double = 0.25
+        @Option(name: .long, help: "Xcode scheme for test execution.")
+        var xcodeScheme: String?
 
-    @Flag(name: .long, help: "Require a clean git working tree before mutation runs")
-    var requireCleanWorkingTree: Bool = false
+        @Option(name: .long, help: "xcodebuild destination (example: platform=iOS Simulator,name=iPhone 16).")
+        var xcodeDestination: String?
 
-    @Flag(name: .long, help: "Disable readiness scorecard output")
-    var noReadinessScorecard: Bool = false
+        @Option(name: .long, help: "Xcode test plan name.")
+        var xcodeTestPlan: String?
 
-    @Option(name: .long, help: "Path to .xcworkspace (enables Xcode runner)")
-    var xcodeWorkspace: String?
+        @Option(name: .long, help: "Xcode build configuration (example: Debug).")
+        var xcodeConfiguration: String?
 
-    @Option(name: .long, help: "Path to .xcodeproj (enables Xcode runner)")
-    var xcodeProject: String?
+        @Option(name: .long, help: "DerivedData path for xcodebuild.")
+        var xcodeDerivedDataPath: String?
+    }
 
-    @Option(name: .long, help: "Xcode scheme for test execution")
-    var xcodeScheme: String?
+    struct OutputOptions: ParsableArguments {
+        @Flag(name: .long, help: "Output report as JSON.")
+        var json: Bool = false
 
-    @Option(name: .long, help: "xcodebuild destination (for example: platform=iOS Simulator,name=iPhone 16)")
-    var xcodeDestination: String?
+        @Flag(name: .long, help: "Disable live progress updates on stderr.")
+        var noProgress: Bool = false
 
-    @Option(name: .long, help: "Xcode test plan name")
-    var xcodeTestPlan: String?
+        @Flag(name: [.short, .long], help: "Print detailed logs from test runners.")
+        var verbose: Bool = false
 
-    @Option(name: .long, help: "Xcode build configuration (for example: Debug)")
-    var xcodeConfiguration: String?
+        @Flag(name: .long, help: "Disable readiness scorecard output.")
+        var noReadinessScorecard: Bool = false
+    }
 
-    @Option(name: .long, help: "DerivedData path for xcodebuild")
-    var xcodeDerivedDataPath: String?
+    struct AdvancedTuningOptions: ParsableArguments {
+        @Option(name: .long, help: "Timeout multiplier for mutation test runs.")
+        var timeoutMultiplier: Double = 10.0
 
-    @Flag(name: .long, help: "Output as JSON")
-    var json: Bool = false
+        @Option(name: .long, help: "Retries after timeout before classifying as timeout.")
+        var timeoutRetries: Int = 1
 
-    @Flag(name: [.short, .long], help: "Verbose progress output")
-    var verbose: Bool = false
+        @Option(name: .long, help: "Mutation sample size before enabling build-first mode.")
+        var buildFirstSampleSize: Int = 6
+
+        @Option(name: .long, help: "Build-error ratio threshold to enable build-first mode in [0,1].")
+        var buildFirstErrorRatio: Double = 0.5
+    }
+
+    @OptionGroup(title: "Target")
+    var target: TargetOptions
+
+    @OptionGroup(title: "Execution")
+    var execution: ExecutionOptions
+
+    @OptionGroup(title: "Safeguards")
+    var safeguards: SafeguardOptions
+
+    @OptionGroup(title: "Xcode")
+    var xcode: XcodeOptions
+
+    @OptionGroup(title: "Report Output")
+    var output: OutputOptions
+
+    @OptionGroup(title: "Advanced", visibility: .hidden)
+    var advanced: AdvancedTuningOptions
+
+    private var sourceFile: String? { target.sourceFile }
+    private var all: Bool { target.all }
+    private var strategyReport: Bool { target.strategyReport }
+    private var lines: String? { target.lines }
+    private var jobs: Int { execution.jobs }
+    private var packagePath: String? { execution.packagePath }
+    private var testFilter: String? { execution.testFilter }
+    private var coverage: Bool { execution.coverage }
+    private var maxBuildErrorRatio: Double { safeguards.maxBuildErrorRatio }
+    private var requireCleanWorkingTree: Bool { safeguards.requireCleanWorkingTree }
+    private var xcodeWorkspace: String? { xcode.xcodeWorkspace }
+    private var xcodeProject: String? { xcode.xcodeProject }
+    private var xcodeScheme: String? { xcode.xcodeScheme }
+    private var xcodeDestination: String? { xcode.xcodeDestination }
+    private var xcodeTestPlan: String? { xcode.xcodeTestPlan }
+    private var xcodeConfiguration: String? { xcode.xcodeConfiguration }
+    private var xcodeDerivedDataPath: String? { xcode.xcodeDerivedDataPath }
+    private var json: Bool { output.json }
+    private var noProgress: Bool { output.noProgress }
+    private var verbose: Bool { output.verbose }
+    private var noReadinessScorecard: Bool { output.noReadinessScorecard }
+    private var timeoutMultiplier: Double { advanced.timeoutMultiplier }
+    private var timeoutRetries: Int { advanced.timeoutRetries }
+    private var buildFirstSampleSize: Int { advanced.buildFirstSampleSize }
+    private var buildFirstErrorRatio: Double { advanced.buildFirstErrorRatio }
 
     private var usesXcodeRunner: Bool {
         xcodeWorkspace != nil
@@ -135,7 +235,7 @@ struct Mutate4Swift: AsyncParsableCommand {
             }
 
             if packagePath != nil {
-                throw ValidationError("--package-path cannot be combined with Xcode runner options.")
+                throw ValidationError("--package-path/--project cannot be combined with Xcode runner options.")
             }
 
             if xcodeWorkspace != nil && xcodeProject != nil {
@@ -163,6 +263,12 @@ struct Mutate4Swift: AsyncParsableCommand {
             }
         }
 
+        let progressReporter = ProgressReporter(enabled: !noProgress)
+        let modeLabel = strategyReport ? "plan" : (all ? "repository-run" : "single-run")
+        progressReporter.stage(
+            "starting \(modeLabel) (runner: \(usesXcodeRunner ? "xcode" : "swiftpm"))"
+        )
+
         var scorecard = ReadinessScorecard(
             runnerMode: usesXcodeRunner ? "xcode" : "swiftpm",
             maxBuildErrorRatio: maxBuildErrorRatio,
@@ -186,14 +292,17 @@ struct Mutate4Swift: AsyncParsableCommand {
                 executionRoot = xcode.rootPath
                 testRunner = XcodeTestRunner(invocation: xcode.invocation, verbose: verbose)
                 coverageProvider = nil
+                progressReporter.stage("resolved Xcode invocation (root: \(executionRoot))")
             } else {
                 let resolvedPackage = try resolvePackagePath(startingFrom: resolvedSource)
                 executionRoot = resolvedPackage
                 testRunner = SPMTestRunner(verbose: verbose)
                 coverageProvider = coverage ? SPMCoverageProvider(verbose: verbose) : nil
+                progressReporter.stage("resolved SwiftPM package root: \(executionRoot)")
             }
 
             if requireCleanWorkingTree {
+                progressReporter.stage("checking git working tree state")
                 if isGitWorkingTreeClean(at: executionRoot) {
                     scorecard.workspaceSafetyGate = .passed("Git working tree is clean")
                 } else {
@@ -220,11 +329,17 @@ struct Mutate4Swift: AsyncParsableCommand {
                 }
 
                 let planner = MutationStrategyPlanner(coverageProvider: coverageProvider)
+                progressReporter.stage(
+                    "building strategy plan for \(sourceFilesForPlan.count) file(s) with \(jobs) worker(s)"
+                )
                 let plan = try await planner.buildPlan(
                     sourceFiles: sourceFilesForPlan,
                     packagePath: executionRoot,
                     testFilterOverride: testFilter,
                     jobs: jobs
+                )
+                progressReporter.stage(
+                    "strategy plan complete: \(plan.totalCandidateMutations) candidate mutation(s) across \(plan.jobsPlanned) worker bucket(s)"
                 )
 
                 if json {
@@ -249,16 +364,21 @@ struct Mutate4Swift: AsyncParsableCommand {
             var totalSurvivors = 0
 
             if all {
+                progressReporter.stage("starting repository mutation run")
                 let batch = try await runRepositoryMutationBatch(
                     executionRoot: executionRoot,
                     testRunner: testRunner,
-                    coverageProvider: coverageProvider
+                    coverageProvider: coverageProvider,
+                    progressReporter: progressReporter
                 )
                 let reports = batch.reports
                 processedSourceFiles = batch.processedSourceFiles
                 totalMutations = batch.totalMutations
                 totalBuildErrors = batch.totalBuildErrors
                 totalSurvivors = batch.totalSurvivors
+                progressReporter.stage(
+                    "repository mutation run complete: files \(batch.processedSourceFiles.count), mutations \(batch.totalMutations), survivors \(batch.totalSurvivors), build errors \(batch.totalBuildErrors)"
+                )
 
                 let repositoryReport = RepositoryMutationReport(
                     packagePath: executionRoot,
@@ -285,6 +405,7 @@ struct Mutate4Swift: AsyncParsableCommand {
                     throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
                 }
 
+                progressReporter.stage("starting mutation run for \(resolvedSource)")
                 let lineSet = parseLines()
                 let orchestrator = Orchestrator(
                     testRunner: testRunner,
@@ -293,7 +414,11 @@ struct Mutate4Swift: AsyncParsableCommand {
                     timeoutMultiplier: timeoutMultiplier,
                     timeoutRetries: timeoutRetries,
                     buildFirstSampleSize: buildFirstSampleSize,
-                    buildFirstErrorRatio: buildFirstErrorRatio
+                    buildFirstErrorRatio: buildFirstErrorRatio,
+                    progressHandler: Self.makeProgressHandler(
+                        reporter: progressReporter,
+                        context: resolvedSource
+                    )
                 )
                 let resolvedSingleFileFilter: String? = if usesXcodeRunner {
                     testFilter
@@ -341,6 +466,9 @@ struct Mutate4Swift: AsyncParsableCommand {
                 totalMutations = report.totalMutations
                 totalBuildErrors = report.buildErrors
                 totalSurvivors = report.survived
+                progressReporter.stage(
+                    "completed \(resolvedSource): mutations \(report.totalMutations), survivors \(report.survived), build errors \(report.buildErrors)"
+                )
 
                 if json {
                     let reporter = JSONReporter()
@@ -380,8 +508,10 @@ struct Mutate4Swift: AsyncParsableCommand {
             if totalSurvivors > 0 {
                 throw ExitCode(1)
             }
+            progressReporter.stage("run completed")
         } catch {
             applyFailureToScorecard(scorecard: &scorecard, error: error)
+            progressReporter.stage("run failed: \(error)")
             throw error
         }
     }
@@ -394,6 +524,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         let buildFirstErrorRatio: Double
         let testFilterOverride: String?
         let coverageEnabled: Bool
+        let progressReporter: ProgressReporter?
     }
 
     private struct RepositoryBatchResult: Sendable {
@@ -439,7 +570,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         let baselineExecutions: Int
     }
 
-    private func orchestratorConfig() -> OrchestratorConfig {
+    private func orchestratorConfig(progressReporter: ProgressReporter?) -> OrchestratorConfig {
         OrchestratorConfig(
             verbose: verbose,
             timeoutMultiplier: timeoutMultiplier,
@@ -447,14 +578,16 @@ struct Mutate4Swift: AsyncParsableCommand {
             buildFirstSampleSize: buildFirstSampleSize,
             buildFirstErrorRatio: buildFirstErrorRatio,
             testFilterOverride: testFilter,
-            coverageEnabled: coverage
+            coverageEnabled: coverage,
+            progressReporter: progressReporter
         )
     }
 
     private func runRepositoryMutationBatch(
         executionRoot: String,
         testRunner: TestRunner,
-        coverageProvider: CoverageProvider?
+        coverageProvider: CoverageProvider?,
+        progressReporter: ProgressReporter?
     ) async throws -> RepositoryBatchResult {
         let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
         if sourceFiles.isEmpty {
@@ -463,7 +596,7 @@ struct Mutate4Swift: AsyncParsableCommand {
             )
         }
 
-        let config = orchestratorConfig()
+        let config = orchestratorConfig(progressReporter: progressReporter)
 
         if jobs <= 1 {
             return try await Self.runRepositoryMutationBatchSerial(
@@ -514,16 +647,6 @@ struct Mutate4Swift: AsyncParsableCommand {
         defer { try? FileManager.default.removeItem(at: workspaceRoot) }
         try createWorkerPackageCopy(from: executionRoot, to: workspaceRoot.path)
 
-        let orchestrator = Orchestrator(
-            testRunner: testRunner,
-            coverageProvider: coverageProvider,
-            verbose: config.verbose,
-            timeoutMultiplier: config.timeoutMultiplier,
-            timeoutRetries: config.timeoutRetries,
-            buildFirstSampleSize: config.buildFirstSampleSize,
-            buildFirstErrorRatio: config.buildFirstErrorRatio
-        )
-
         var reports: [MutationReport] = []
         reports.reserveCapacity(sourceFiles.count)
         var baselineCache: [String: BaselineResult] = [:]
@@ -535,6 +658,8 @@ struct Mutate4Swift: AsyncParsableCommand {
             if config.verbose {
                 print("== [\(index + 1)/\(sourceFiles.count)] \(sourceFile) ==")
             }
+            let context = "file \(index + 1)/\(sourceFiles.count): \(sourceFile)"
+            config.progressReporter?.stage("[\(context)] preparing")
 
             let resolvedFilter = if let override = config.testFilterOverride {
                 override
@@ -548,6 +673,19 @@ struct Mutate4Swift: AsyncParsableCommand {
                 sourceFile,
                 fromExecutionRoot: executionRoot,
                 toWorkerRoot: workspaceRoot.path
+            )
+            let orchestrator = Orchestrator(
+                testRunner: testRunner,
+                coverageProvider: coverageProvider,
+                verbose: config.verbose,
+                timeoutMultiplier: config.timeoutMultiplier,
+                timeoutRetries: config.timeoutRetries,
+                buildFirstSampleSize: config.buildFirstSampleSize,
+                buildFirstErrorRatio: config.buildFirstErrorRatio,
+                progressHandler: makeProgressHandler(
+                    reporter: config.progressReporter,
+                    context: context
+                )
             )
 
             let workspaceReport = try orchestrator.run(
@@ -564,6 +702,9 @@ struct Mutate4Swift: AsyncParsableCommand {
             )
 
             reports.append(report)
+            config.progressReporter?.stage(
+                "[\(context)] completed: mutations \(report.totalMutations), survivors \(report.survived), build errors \(report.buildErrors)"
+            )
 
             if cachedBaseline == nil && workspaceReport.totalMutations > 0 {
                 baselineExecutions += 1
@@ -588,6 +729,9 @@ struct Mutate4Swift: AsyncParsableCommand {
         executionRoot: String,
         config: OrchestratorConfig
     ) async throws -> RepositoryBatchResult {
+        config.progressReporter?.stage(
+            "parallel plan: \(plan.workloads.count) file(s), \(plan.totalCandidateMutations) candidate mutation(s), \(plan.jobsPlanned) worker(s)"
+        )
         let workerParent = try prepareMutationRunDirectory(
             in: executionRoot,
             prefix: "parallel"
@@ -622,6 +766,9 @@ struct Mutate4Swift: AsyncParsableCommand {
 
             for try await result in group {
                 workerResults.append(result)
+                config.progressReporter?.stage(
+                    "completed worker bucket (\(workerResults.count)/\(candidateBuckets.count))"
+                )
             }
         }
 
@@ -661,14 +808,8 @@ struct Mutate4Swift: AsyncParsableCommand {
         let workerCoverage: CoverageProvider? = config.coverageEnabled
             ? SPMCoverageProvider(verbose: config.verbose)
             : nil
-        let orchestrator = Orchestrator(
-            testRunner: workerRunner,
-            coverageProvider: workerCoverage,
-            verbose: config.verbose,
-            timeoutMultiplier: config.timeoutMultiplier,
-            timeoutRetries: config.timeoutRetries,
-            buildFirstSampleSize: config.buildFirstSampleSize,
-            buildFirstErrorRatio: config.buildFirstErrorRatio
+        config.progressReporter?.stage(
+            "worker \(bucket.workerIndex + 1): starting \(bucket.workloads.count) file(s)"
         )
 
         var reports: [MutationReport] = []
@@ -682,6 +823,8 @@ struct Mutate4Swift: AsyncParsableCommand {
                     "== [worker \(bucket.workerIndex + 1):\(index + 1)/\(bucket.workloads.count)] \(workload.sourceFile) =="
                 )
             }
+            let context = "worker \(bucket.workerIndex + 1) file \(index + 1)/\(bucket.workloads.count): \(workload.sourceFile)"
+            config.progressReporter?.stage("[\(context)] preparing")
 
             let workerSource = try remapSourceFile(
                 workload.sourceFile,
@@ -690,6 +833,19 @@ struct Mutate4Swift: AsyncParsableCommand {
             )
             let baselineKey = workload.scopeKey
             let cachedBaseline = baselineCache[baselineKey]
+            let orchestrator = Orchestrator(
+                testRunner: workerRunner,
+                coverageProvider: workerCoverage,
+                verbose: config.verbose,
+                timeoutMultiplier: config.timeoutMultiplier,
+                timeoutRetries: config.timeoutRetries,
+                buildFirstSampleSize: config.buildFirstSampleSize,
+                buildFirstErrorRatio: config.buildFirstErrorRatio,
+                progressHandler: makeProgressHandler(
+                    reporter: config.progressReporter,
+                    context: context
+                )
+            )
 
             let workerReport = try orchestrator.run(
                 sourceFile: workerSource,
@@ -706,6 +862,9 @@ struct Mutate4Swift: AsyncParsableCommand {
                     baselineDuration: workerReport.baselineDuration
                 )
             )
+            config.progressReporter?.stage(
+                "[\(context)] completed: mutations \(workerReport.totalMutations), survivors \(workerReport.survived), build errors \(workerReport.buildErrors)"
+            )
 
             if cachedBaseline == nil && workerReport.totalMutations > 0 {
                 baselineExecutions += 1
@@ -720,6 +879,19 @@ struct Mutate4Swift: AsyncParsableCommand {
             reports: reports,
             baselineExecutions: baselineExecutions
         )
+    }
+
+    private static func makeProgressHandler(
+        reporter: ProgressReporter?,
+        context: String
+    ) -> OrchestratorProgressHandler? {
+        guard let reporter else {
+            return nil
+        }
+
+        return { event in
+            reporter.record(event: event, context: context)
+        }
     }
 
     private static func prepareMutationRunDirectory(in executionRoot: String, prefix: String) throws -> URL {
