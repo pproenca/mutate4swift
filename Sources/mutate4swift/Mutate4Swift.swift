@@ -295,12 +295,39 @@ struct Mutate4Swift: AsyncParsableCommand {
                     buildFirstSampleSize: buildFirstSampleSize,
                     buildFirstErrorRatio: buildFirstErrorRatio
                 )
-                let report = try orchestrator.run(
-                    sourceFile: resolvedSource,
-                    packagePath: executionRoot,
-                    testFilter: testFilter,
-                    lines: lineSet
-                )
+                let report: MutationReport
+                if usesXcodeRunner {
+                    report = try orchestrator.run(
+                        sourceFile: resolvedSource,
+                        packagePath: executionRoot,
+                        testFilter: testFilter,
+                        lines: lineSet
+                    )
+                } else {
+                    let workspaceRoot = try Self.prepareMutationRunDirectory(
+                        in: executionRoot,
+                        prefix: "single"
+                    )
+                    defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+                    try Self.createWorkerPackageCopy(from: executionRoot, to: workspaceRoot.path)
+
+                    let workspaceSource = try Self.remapSourceFile(
+                        resolvedSource,
+                        fromExecutionRoot: executionRoot,
+                        toWorkerRoot: workspaceRoot.path
+                    )
+                    let workspaceReport = try orchestrator.run(
+                        sourceFile: workspaceSource,
+                        packagePath: workspaceRoot.path,
+                        testFilter: testFilter,
+                        lines: lineSet
+                    )
+                    report = MutationReport(
+                        results: workspaceReport.results,
+                        sourceFile: resolvedSource,
+                        baselineDuration: workspaceReport.baselineDuration
+                    )
+                }
 
                 processedSourceFiles = [resolvedSource]
                 totalMutations = report.totalMutations
@@ -472,6 +499,13 @@ struct Mutate4Swift: AsyncParsableCommand {
         coverageProvider: CoverageProvider?,
         config: OrchestratorConfig
     ) throws -> RepositoryBatchResult {
+        let workspaceRoot = try prepareMutationRunDirectory(
+            in: executionRoot,
+            prefix: "serial"
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+        try createWorkerPackageCopy(from: executionRoot, to: workspaceRoot.path)
+
         let orchestrator = Orchestrator(
             testRunner: testRunner,
             coverageProvider: coverageProvider,
@@ -498,21 +532,31 @@ struct Mutate4Swift: AsyncParsableCommand {
             let baselineKey = resolvedFilter ?? "__all_tests__"
             baselineScopes.insert(baselineKey)
             let cachedBaseline = baselineCache[baselineKey]
+            let workspaceSource = try remapSourceFile(
+                sourceFile,
+                fromExecutionRoot: executionRoot,
+                toWorkerRoot: workspaceRoot.path
+            )
 
-            let report = try orchestrator.run(
-                sourceFile: sourceFile,
-                packagePath: executionRoot,
+            let workspaceReport = try orchestrator.run(
+                sourceFile: workspaceSource,
+                packagePath: workspaceRoot.path,
                 testFilter: resolvedFilter,
                 baselineOverride: cachedBaseline,
                 resolvedTestFilter: resolvedFilter
             )
+            let report = MutationReport(
+                results: workspaceReport.results,
+                sourceFile: sourceFile,
+                baselineDuration: workspaceReport.baselineDuration
+            )
 
             reports.append(report)
 
-            if cachedBaseline == nil && report.totalMutations > 0 {
+            if cachedBaseline == nil && workspaceReport.totalMutations > 0 {
                 baselineExecutions += 1
                 baselineCache[baselineKey] = BaselineResult(
-                    duration: report.baselineDuration,
+                    duration: workspaceReport.baselineDuration,
                     timeoutMultiplier: config.timeoutMultiplier
                 )
             }
@@ -532,11 +576,9 @@ struct Mutate4Swift: AsyncParsableCommand {
         executionRoot: String,
         config: OrchestratorConfig
     ) async throws -> RepositoryBatchResult {
-        let workerParent = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mutate4swift-workers-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(
-            at: workerParent,
-            withIntermediateDirectories: true
+        let workerParent = try prepareMutationRunDirectory(
+            in: executionRoot,
+            prefix: "parallel"
         )
         defer { try? FileManager.default.removeItem(at: workerParent) }
 
@@ -668,11 +710,26 @@ struct Mutate4Swift: AsyncParsableCommand {
         )
     }
 
+    private static func prepareMutationRunDirectory(in executionRoot: String, prefix: String) throws -> URL {
+        let runsRoot = URL(fileURLWithPath: executionRoot)
+            .appendingPathComponent(".mutate4swift/worktrees", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: runsRoot,
+            withIntermediateDirectories: true
+        )
+        let runDirectory = runsRoot.appendingPathComponent("\(prefix)-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: runDirectory,
+            withIntermediateDirectories: true
+        )
+        return runDirectory
+    }
+
     private static func createWorkerPackageCopy(from sourceRoot: String, to workerRoot: String) throws {
         let fileManager = FileManager.default
         try fileManager.createDirectory(atPath: workerRoot, withIntermediateDirectories: true)
 
-        let excludedTopLevelEntries: Set<String> = [".build", ".git"]
+        let excludedTopLevelEntries: Set<String> = [".build", ".git", ".mutate4swift"]
         for entry in try fileManager.contentsOfDirectory(atPath: sourceRoot) {
             if excludedTopLevelEntries.contains(entry) {
                 continue
