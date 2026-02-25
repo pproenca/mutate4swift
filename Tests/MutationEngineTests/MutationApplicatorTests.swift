@@ -85,6 +85,37 @@ final class MutationApplicatorTests: XCTestCase {
         XCTAssertEqual(mutated, "let key = \"\"")
     }
 
+    func testApplyNilCoalescingMutation() {
+        let source = "let name = user?.name ?? \"Anonymous\""
+        let discoverer = MutationDiscoverer(source: source)
+        let sites = discoverer.discoverSites()
+            .filter { $0.mutationOperator == .nilCoalescing && $0.mutatedText == "\"Anonymous\"" }
+        XCTAssertEqual(sites.count, 1)
+
+        let mutated = applicator.apply(sites[0], to: source)
+        XCTAssertEqual(mutated, "let name = \"Anonymous\"")
+    }
+
+    func testApplyStatementDeletionMutation() {
+        let source = "func bump() { count += 1 }"
+        let discoverer = MutationDiscoverer(source: source)
+        let sites = discoverer.discoverSites().filter { $0.mutationOperator == .statementDeletion }
+        XCTAssertEqual(sites.count, 1)
+
+        let mutated = applicator.apply(sites[0], to: source)
+        XCTAssertEqual(mutated, "func bump() {  }")
+    }
+
+    func testApplyVoidCallRemovalMutation() {
+        let source = "func run() { log() }"
+        let discoverer = MutationDiscoverer(source: source)
+        let sites = discoverer.discoverSites().filter { $0.mutationOperator == .voidCallRemoval }
+        XCTAssertEqual(sites.count, 1)
+
+        let mutated = applicator.apply(sites[0], to: source)
+        XCTAssertEqual(mutated, "func run() {  }")
+    }
+
     func testApplyDoesNotCorruptMultibyteUTF8() {
         // Use true in actual code, not in a comment
         let source = "let emoji = \"🎉\"; let flag = true"

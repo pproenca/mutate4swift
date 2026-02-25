@@ -152,6 +152,37 @@ public final class MutationDiscoverer: SyntaxVisitor {
                 elseExpression: elements[2]
             )
         }
+
+        // Nil-coalescing appears as `lhs`, `BinaryOperatorExprSyntax("??")`, `rhs`.
+        if elements.count >= 3 {
+            for index in 1..<(elements.count - 1) {
+                guard let op = elements[index].as(BinaryOperatorExprSyntax.self),
+                      op.operator.text == "??" else {
+                    continue
+                }
+                addNilCoalescingSites(lhs: elements[index - 1], rhs: elements[index + 1])
+            }
+        }
+
+        return .visitChildren
+    }
+
+    // MARK: - Statement deletion and void call removal
+
+    override public func visit(_ node: CodeBlockItemSyntax) -> SyntaxVisitorContinueKind {
+        guard let expr = node.item.as(ExprSyntax.self) else {
+            return .visitChildren
+        }
+
+        if isStatementLevelCall(expr) {
+            addStatementRemovalSite(node: node, expr: expr, operator: .voidCallRemoval)
+            return .visitChildren
+        }
+
+        if isAssignmentStatement(expr) {
+            addStatementRemovalSite(node: node, expr: expr, operator: .statementDeletion)
+        }
+
         return .visitChildren
     }
 
@@ -301,6 +332,127 @@ public final class MutationDiscoverer: SyntaxVisitor {
             mutatedText: "\(conditionText) ? \(elseText) : \(thenText)",
             operator: .ternarySwap
         )
+    }
+
+    private func addNilCoalescingSites(lhs: ExprSyntax, rhs: ExprSyntax) {
+        let start = lhs.positionAfterSkippingLeadingTrivia
+        let end = rhs.endPositionBeforeTrailingTrivia
+        let lhsText = lhs.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rhsText = rhs.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
+            ?? "\(lhsText) ?? \(rhsText)"
+
+        addSite(
+            start: start,
+            end: end,
+            originalText: originalText,
+            mutatedText: rhsText,
+            operator: .nilCoalescing
+        )
+        addSite(
+            start: start,
+            end: end,
+            originalText: originalText,
+            mutatedText: "(\(lhsText))!",
+            operator: .nilCoalescing
+        )
+    }
+
+    private func addStatementRemovalSite(
+        node: CodeBlockItemSyntax,
+        expr: ExprSyntax,
+        operator mutationOp: MutationOperator
+    ) {
+        let start = expr.positionAfterSkippingLeadingTrivia
+        let end: AbsolutePosition
+        if let semicolon = node.semicolon {
+            end = semicolon.endPositionBeforeTrailingTrivia
+        } else {
+            end = expr.endPositionBeforeTrailingTrivia
+        }
+
+        guard end.utf8Offset > start.utf8Offset else {
+            return
+        }
+
+        let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
+            ?? expr.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !originalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        addSite(
+            start: start,
+            end: end,
+            originalText: originalText,
+            mutatedText: "",
+            operator: mutationOp
+        )
+    }
+
+    private func isStatementLevelCall(_ expr: ExprSyntax) -> Bool {
+        let unwrapped = unwrapTryAwait(expr)
+        return unwrapped.is(FunctionCallExprSyntax.self)
+    }
+
+    private func unwrapTryAwait(_ expr: ExprSyntax) -> ExprSyntax {
+        var current = expr
+        while true {
+            if let tryExpr = current.as(TryExprSyntax.self) {
+                current = tryExpr.expression
+                continue
+            }
+            if let awaitExpr = current.as(AwaitExprSyntax.self) {
+                current = awaitExpr.expression
+                continue
+            }
+            return current
+        }
+    }
+
+    private func isAssignmentStatement(_ expr: ExprSyntax) -> Bool {
+        if expr.is(AssignmentExprSyntax.self) {
+            return true
+        }
+
+        if let sequence = expr.as(SequenceExprSyntax.self) {
+            for element in sequence.elements {
+                if element.is(AssignmentExprSyntax.self) {
+                    return true
+                }
+                if let op = element.as(BinaryOperatorExprSyntax.self),
+                   isAssignmentOperator(op.operator.text) {
+                    return true
+                }
+            }
+        }
+
+        if let infix = expr.as(InfixOperatorExprSyntax.self) {
+            if infix.operator.is(AssignmentExprSyntax.self) {
+                return true
+            }
+            if let op = infix.operator.as(BinaryOperatorExprSyntax.self),
+               isAssignmentOperator(op.operator.text) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func isAssignmentOperator(_ opText: String) -> Bool {
+        if opText == "=" {
+            return true
+        }
+        guard opText.hasSuffix("=") else {
+            return false
+        }
+        switch opText {
+        case "==", "!=", ">=", "<=", "===", "!==", "~=":
+            return false
+        default:
+            return true
+        }
     }
 
     // MARK: - Helpers

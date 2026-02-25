@@ -366,6 +366,99 @@ final class MutationDiscovererTests: XCTestCase {
         XCTAssertEqual(sites.count, 0)
     }
 
+    // MARK: - Nil coalescing
+
+    func testNilCoalescingMutations() {
+        let source = "let name = user?.name ?? \"Anonymous\""
+        let sites = discover(source).filter { $0.mutationOperator == .nilCoalescing }
+        XCTAssertEqual(sites.count, 2)
+        XCTAssertEqual(sites[0].originalText, "user?.name ?? \"Anonymous\"")
+        let mutated = Set(sites.map { $0.mutatedText })
+        XCTAssertEqual(mutated, Set(["\"Anonymous\"", "(user?.name)!"]))
+    }
+
+    // MARK: - Statement deletion
+
+    func testStatementDeletionForAssignment() {
+        let source = """
+        func bump() {
+            count += 1
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .statementDeletion }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "count += 1")
+        XCTAssertEqual(sites[0].mutatedText, "")
+    }
+
+    func testStatementDeletionSkipsDeclarations() {
+        let source = """
+        func bump() {
+            let x = 1
+            var y = 2
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .statementDeletion }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    func testStatementDeletionSkipsNonAssignmentExpression() {
+        let source = """
+        func bump() {
+            1 + 2
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .statementDeletion }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    // MARK: - Void call removal
+
+    func testVoidCallRemovalForStatementLevelCall() {
+        let source = """
+        func run() {
+            logger.warn("threshold exceeded")
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .voidCallRemoval }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "logger.warn(\"threshold exceeded\")")
+        XCTAssertEqual(sites[0].mutatedText, "")
+    }
+
+    func testVoidCallRemovalForTryWrappedCall() {
+        let source = """
+        func run() {
+            try? save()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .voidCallRemoval }
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].originalText, "try? save()")
+    }
+
+    func testVoidCallRemovalSkipsCallUsedInDeclaration() {
+        let source = """
+        func run() {
+            let value = compute()
+        }
+        """
+        let sites = discover(source).filter { $0.mutationOperator == .voidCallRemoval }
+        XCTAssertEqual(sites.count, 0)
+    }
+
+    func testCallStatementOnlyProducesVoidCallRemoval() {
+        let source = """
+        func run() {
+            log()
+        }
+        """
+        let statementDeletion = discover(source).filter { $0.mutationOperator == .statementDeletion }
+        let voidCallRemoval = discover(source).filter { $0.mutationOperator == .voidCallRemoval }
+        XCTAssertEqual(statementDeletion.count, 0)
+        XCTAssertEqual(voidCallRemoval.count, 1)
+    }
+
     func testIfMultipleConditionsSkipped() {
         let source = """
         func foo(a: Bool, b: Bool) {
