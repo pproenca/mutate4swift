@@ -44,6 +44,54 @@ final class OrchestratorTests: XCTestCase {
         XCTAssertEqual(report.buildErrors, 1)
     }
 
+    func testRunRetriesTimeoutBeforeClassifyingOutcome() throws {
+        try withTemporarySourceFile(contents: "let flag = true") { sourceFile in
+            let runner = MockTestRunner(
+                results: [.success(.passed), .success(.timeout), .success(.failed)]
+            )
+            let orchestrator = Orchestrator(
+                testRunner: runner,
+                timeoutRetries: 1
+            )
+
+            let report = try orchestrator.run(
+                sourceFile: sourceFile.path,
+                packagePath: "/tmp/pkg"
+            )
+
+            XCTAssertEqual(report.killed, 1)
+            XCTAssertEqual(report.timedOut, 0)
+            XCTAssertEqual(runner.calls.count, 3)
+        }
+    }
+
+    func testRunEnablesBuildFirstModeAfterBuildErrorThreshold() throws {
+        try withTemporarySourceFile(contents: "let a = true\nlet b = false") { sourceFile in
+            let runner = MockSplitRunner(
+                runResults: [.passed, .buildError],
+                buildResults: [.passed],
+                noBuildResults: [.failed]
+            )
+            let orchestrator = Orchestrator(
+                testRunner: runner,
+                buildFirstSampleSize: 1,
+                buildFirstErrorRatio: 1.0
+            )
+
+            let report = try orchestrator.run(
+                sourceFile: sourceFile.path,
+                packagePath: "/tmp/pkg"
+            )
+
+            XCTAssertEqual(report.totalMutations, 2)
+            XCTAssertEqual(report.buildErrors, 1)
+            XCTAssertEqual(report.killed, 1)
+            XCTAssertEqual(runner.runCalls.count, 2) // baseline + first mutation
+            XCTAssertEqual(runner.buildCalls.count, 1)
+            XCTAssertEqual(runner.noBuildCalls.count, 1)
+        }
+    }
+
     func testRunThrowsWhenBaselineFails() throws {
         try withTemporarySourceFile(contents: "let flag = true") { sourceFile in
             let runner = MockTestRunner(results: [.success(.failed)])
@@ -283,5 +331,43 @@ private final class MockCoverageProvider: CoverageProvider, @unchecked Sendable 
         case .success(let covered): return covered
         case .failure(let error): throw error
         }
+    }
+}
+
+private final class MockSplitRunner: BuildSplitCapableTestRunner, @unchecked Sendable {
+    var runResults: [TestRunResult]
+    var buildResults: [TestRunResult]
+    var noBuildResults: [TestRunResult]
+
+    var runCalls: [(packagePath: String, filter: String?, timeout: TimeInterval)] = []
+    var buildCalls: [(packagePath: String, timeout: TimeInterval)] = []
+    var noBuildCalls: [(packagePath: String, filter: String?, timeout: TimeInterval)] = []
+
+    init(runResults: [TestRunResult], buildResults: [TestRunResult], noBuildResults: [TestRunResult]) {
+        self.runResults = runResults
+        self.buildResults = buildResults
+        self.noBuildResults = noBuildResults
+    }
+
+    func runTests(packagePath: String, filter: String?, timeout: TimeInterval) throws -> TestRunResult {
+        runCalls.append((packagePath: packagePath, filter: filter, timeout: timeout))
+        guard !runResults.isEmpty else { return .passed }
+        return runResults.removeFirst()
+    }
+
+    func runBuild(packagePath: String, timeout: TimeInterval) throws -> TestRunResult {
+        buildCalls.append((packagePath: packagePath, timeout: timeout))
+        guard !buildResults.isEmpty else { return .passed }
+        return buildResults.removeFirst()
+    }
+
+    func runTestsWithoutBuild(
+        packagePath: String,
+        filter: String?,
+        timeout: TimeInterval
+    ) throws -> TestRunResult {
+        noBuildCalls.append((packagePath: packagePath, filter: filter, timeout: timeout))
+        guard !noBuildResults.isEmpty else { return .passed }
+        return noBuildResults.removeFirst()
     }
 }

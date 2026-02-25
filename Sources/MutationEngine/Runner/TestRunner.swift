@@ -15,3 +15,8 @@ public protocol TestRunner: Sendable {
 public protocol BaselineCapableTestRunner: TestRunner {
     func runBaseline(packagePath: String, filter: String?) throws -> BaselineResult
 }
+
+public protocol BuildSplitCapableTestRunner: TestRunner {
+    func runBuild(packagePath: String, timeout: TimeInterval) throws -> TestRunResult
+    func runTestsWithoutBuild(packagePath: String, filter: String?, timeout: TimeInterval) throws -> TestRunResult
+}

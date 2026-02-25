@@ -3,7 +3,7 @@ import Foundation
 import MutationEngine
 
 @main
-struct Mutate4Swift: ParsableCommand {
+struct Mutate4Swift: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mutate4swift",
         abstract: "Mutation testing for SwiftPM and Xcode projects",
@@ -19,7 +19,7 @@ struct Mutate4Swift: ParsableCommand {
     @Flag(name: .long, help: "Analyze mutation strategy and exit without mutating files")
     var strategyReport: Bool = false
 
-    @Option(name: .long, help: "Number of planning buckets for --strategy-report (default: 1)")
+    @Option(name: .long, help: "Number of worker buckets for --all and --strategy-report (default: 1)")
     var jobs: Int = 1
 
     @Option(name: .long, help: "SPM package root (auto-detected if omitted)")
@@ -33,6 +33,15 @@ struct Mutate4Swift: ParsableCommand {
 
     @Option(name: .long, help: "Timeout multiplier (default: 10)")
     var timeoutMultiplier: Double = 10.0
+
+    @Option(name: .long, help: "Retries after timeout before classifying as timeout (default: 1)")
+    var timeoutRetries: Int = 1
+
+    @Option(name: .long, help: "Mutation sample size before enabling build-first mode (default: 6)")
+    var buildFirstSampleSize: Int = 6
+
+    @Option(name: .long, help: "Build-error ratio threshold to enable build-first mode in [0,1] (default: 0.5)")
+    var buildFirstErrorRatio: Double = 0.5
 
     @Flag(name: .long, help: "Use code coverage to skip untested lines (SwiftPM mode only)")
     var coverage: Bool = false
@@ -104,6 +113,18 @@ struct Mutate4Swift: ParsableCommand {
             throw ValidationError("--jobs must be >= 1.")
         }
 
+        guard timeoutRetries >= 0 else {
+            throw ValidationError("--timeout-retries must be >= 0.")
+        }
+
+        guard buildFirstSampleSize >= 1 else {
+            throw ValidationError("--build-first-sample-size must be >= 1.")
+        }
+
+        guard (0.0...1.0).contains(buildFirstErrorRatio) else {
+            throw ValidationError("--build-first-error-ratio must be in [0,1].")
+        }
+
         if usesXcodeRunner {
             if all {
                 throw ValidationError("--all is currently only supported in SwiftPM mode.")
@@ -131,7 +152,7 @@ struct Mutate4Swift: ParsableCommand {
         }
     }
 
-    func run() throws {
+    func run() async throws {
         let resolvedSource = resolveSourceFile()
         if !all {
             guard let resolvedSource else {
@@ -222,65 +243,22 @@ struct Mutate4Swift: ParsableCommand {
                 return
             }
 
-            let orchestrator = Orchestrator(
-                testRunner: testRunner,
-                coverageProvider: coverageProvider,
-                verbose: verbose,
-                timeoutMultiplier: timeoutMultiplier
-            )
-
             var processedSourceFiles: [String] = []
             var totalMutations = 0
             var totalBuildErrors = 0
             var totalSurvivors = 0
 
             if all {
-                let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
-                if sourceFiles.isEmpty {
-                    throw Mutate4SwiftError.invalidSourceFile(
-                        "No Swift source files found under \(executionRoot)/Sources"
-                    )
-                }
-
-                var reports: [MutationReport] = []
-                reports.reserveCapacity(sourceFiles.count)
-                var baselineCache: [String: BaselineResult] = [:]
-                var baselineExecutions = 0
-                var baselineScopes = Set<String>()
-                let mapper = TestFileMapper()
-
-                for (index, sourceFile) in sourceFiles.enumerated() {
-                    if verbose {
-                        print("== [\(index + 1)/\(sourceFiles.count)] \(sourceFile) ==")
-                    }
-
-                    let resolvedFilter = testFilter ?? mapper.testFilter(forSourceFile: sourceFile)
-                    let baselineKey = resolvedFilter ?? "__all_tests__"
-                    baselineScopes.insert(baselineKey)
-                    let cachedBaseline = baselineCache[baselineKey]
-
-                    let report = try orchestrator.run(
-                        sourceFile: sourceFile,
-                        packagePath: executionRoot,
-                        testFilter: resolvedFilter,
-                        baselineOverride: cachedBaseline,
-                        resolvedTestFilter: resolvedFilter
-                    )
-
-                    reports.append(report)
-                    processedSourceFiles.append(sourceFile)
-                    totalMutations += report.totalMutations
-                    totalBuildErrors += report.buildErrors
-                    totalSurvivors += report.survived
-
-                    if cachedBaseline == nil && report.totalMutations > 0 {
-                        baselineExecutions += 1
-                        baselineCache[baselineKey] = BaselineResult(
-                            duration: report.baselineDuration,
-                            timeoutMultiplier: timeoutMultiplier
-                        )
-                    }
-                }
+                let batch = try await runRepositoryMutationBatch(
+                    executionRoot: executionRoot,
+                    testRunner: testRunner,
+                    coverageProvider: coverageProvider
+                )
+                let reports = batch.reports
+                processedSourceFiles = batch.processedSourceFiles
+                totalMutations = batch.totalMutations
+                totalBuildErrors = batch.totalBuildErrors
+                totalSurvivors = batch.totalSurvivors
 
                 let repositoryReport = RepositoryMutationReport(
                     packagePath: executionRoot,
@@ -295,11 +273,11 @@ struct Mutate4Swift: ParsableCommand {
                     print(reporter.report(repositoryReport))
                 }
 
-                if sourceFiles.count <= 1 {
+                if batch.processedSourceFiles.count <= 1 {
                     scorecard.scaleEfficiencyGate = .skipped("Single-file batch")
                 } else {
                     scorecard.scaleEfficiencyGate = .passed(
-                        "Baseline runs: \(baselineExecutions), unique scopes: \(baselineScopes.count), files: \(sourceFiles.count)"
+                        "Workers: \(batch.jobsUsed), baseline runs: \(batch.baselineExecutions), unique scopes: \(batch.baselineScopeCount), files: \(batch.processedSourceFiles.count)"
                     )
                 }
             } else {
@@ -308,6 +286,15 @@ struct Mutate4Swift: ParsableCommand {
                 }
 
                 let lineSet = parseLines()
+                let orchestrator = Orchestrator(
+                    testRunner: testRunner,
+                    coverageProvider: coverageProvider,
+                    verbose: verbose,
+                    timeoutMultiplier: timeoutMultiplier,
+                    timeoutRetries: timeoutRetries,
+                    buildFirstSampleSize: buildFirstSampleSize,
+                    buildFirstErrorRatio: buildFirstErrorRatio
+                )
                 let report = try orchestrator.run(
                     sourceFile: resolvedSource,
                     packagePath: executionRoot,
@@ -362,6 +349,360 @@ struct Mutate4Swift: ParsableCommand {
             applyFailureToScorecard(scorecard: &scorecard, error: error)
             throw error
         }
+    }
+
+    private struct OrchestratorConfig: Sendable {
+        let verbose: Bool
+        let timeoutMultiplier: Double
+        let timeoutRetries: Int
+        let buildFirstSampleSize: Int
+        let buildFirstErrorRatio: Double
+        let testFilterOverride: String?
+        let coverageEnabled: Bool
+    }
+
+    private struct RepositoryBatchResult: Sendable {
+        let reports: [MutationReport]
+        let processedSourceFiles: [String]
+        let totalMutations: Int
+        let totalBuildErrors: Int
+        let totalSurvivors: Int
+        let baselineExecutions: Int
+        let baselineScopeCount: Int
+        let jobsUsed: Int
+
+        init(
+            reports: [MutationReport],
+            processedSourceFiles: [String],
+            baselineExecutions: Int,
+            baselineScopeCount: Int,
+            jobsUsed: Int
+        ) {
+            self.reports = reports
+            self.processedSourceFiles = processedSourceFiles
+            self.baselineExecutions = baselineExecutions
+            self.baselineScopeCount = baselineScopeCount
+            self.jobsUsed = jobsUsed
+
+            var totalMutations = 0
+            var totalBuildErrors = 0
+            var totalSurvivors = 0
+            for report in reports {
+                totalMutations += report.totalMutations
+                totalBuildErrors += report.buildErrors
+                totalSurvivors += report.survived
+            }
+
+            self.totalMutations = totalMutations
+            self.totalBuildErrors = totalBuildErrors
+            self.totalSurvivors = totalSurvivors
+        }
+    }
+
+    private struct WorkerBucketResult: Sendable {
+        let reports: [MutationReport]
+        let baselineExecutions: Int
+    }
+
+    private func orchestratorConfig() -> OrchestratorConfig {
+        OrchestratorConfig(
+            verbose: verbose,
+            timeoutMultiplier: timeoutMultiplier,
+            timeoutRetries: timeoutRetries,
+            buildFirstSampleSize: buildFirstSampleSize,
+            buildFirstErrorRatio: buildFirstErrorRatio,
+            testFilterOverride: testFilter,
+            coverageEnabled: coverage
+        )
+    }
+
+    private func runRepositoryMutationBatch(
+        executionRoot: String,
+        testRunner: TestRunner,
+        coverageProvider: CoverageProvider?
+    ) async throws -> RepositoryBatchResult {
+        let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
+        if sourceFiles.isEmpty {
+            throw Mutate4SwiftError.invalidSourceFile(
+                "No Swift source files found under \(executionRoot)/Sources"
+            )
+        }
+
+        let config = orchestratorConfig()
+
+        if jobs <= 1 {
+            return try Self.runRepositoryMutationBatchSerial(
+                sourceFiles: sourceFiles,
+                executionRoot: executionRoot,
+                testRunner: testRunner,
+                coverageProvider: coverageProvider,
+                config: config
+            )
+        }
+
+        let planner = MutationStrategyPlanner(coverageProvider: coverageProvider)
+        let plan = try planner.buildPlan(
+            sourceFiles: sourceFiles,
+            packagePath: executionRoot,
+            testFilterOverride: config.testFilterOverride,
+            jobs: jobs
+        )
+
+        if plan.jobsPlanned <= 1 {
+            return try Self.runRepositoryMutationBatchSerial(
+                sourceFiles: sourceFiles,
+                executionRoot: executionRoot,
+                testRunner: testRunner,
+                coverageProvider: coverageProvider,
+                config: config
+            )
+        }
+
+        return try await Self.runRepositoryMutationBatchParallel(
+            plan: plan,
+            executionRoot: executionRoot,
+            config: config
+        )
+    }
+
+    private static func runRepositoryMutationBatchSerial(
+        sourceFiles: [String],
+        executionRoot: String,
+        testRunner: TestRunner,
+        coverageProvider: CoverageProvider?,
+        config: OrchestratorConfig
+    ) throws -> RepositoryBatchResult {
+        let orchestrator = Orchestrator(
+            testRunner: testRunner,
+            coverageProvider: coverageProvider,
+            verbose: config.verbose,
+            timeoutMultiplier: config.timeoutMultiplier,
+            timeoutRetries: config.timeoutRetries,
+            buildFirstSampleSize: config.buildFirstSampleSize,
+            buildFirstErrorRatio: config.buildFirstErrorRatio
+        )
+
+        var reports: [MutationReport] = []
+        reports.reserveCapacity(sourceFiles.count)
+        var baselineCache: [String: BaselineResult] = [:]
+        var baselineExecutions = 0
+        var baselineScopes = Set<String>()
+        let mapper = TestFileMapper()
+
+        for (index, sourceFile) in sourceFiles.enumerated() {
+            if config.verbose {
+                print("== [\(index + 1)/\(sourceFiles.count)] \(sourceFile) ==")
+            }
+
+            let resolvedFilter = config.testFilterOverride ?? mapper.testFilter(forSourceFile: sourceFile)
+            let baselineKey = resolvedFilter ?? "__all_tests__"
+            baselineScopes.insert(baselineKey)
+            let cachedBaseline = baselineCache[baselineKey]
+
+            let report = try orchestrator.run(
+                sourceFile: sourceFile,
+                packagePath: executionRoot,
+                testFilter: resolvedFilter,
+                baselineOverride: cachedBaseline,
+                resolvedTestFilter: resolvedFilter
+            )
+
+            reports.append(report)
+
+            if cachedBaseline == nil && report.totalMutations > 0 {
+                baselineExecutions += 1
+                baselineCache[baselineKey] = BaselineResult(
+                    duration: report.baselineDuration,
+                    timeoutMultiplier: config.timeoutMultiplier
+                )
+            }
+        }
+
+        return RepositoryBatchResult(
+            reports: reports,
+            processedSourceFiles: sourceFiles,
+            baselineExecutions: baselineExecutions,
+            baselineScopeCount: baselineScopes.count,
+            jobsUsed: 1
+        )
+    }
+
+    private static func runRepositoryMutationBatchParallel(
+        plan: MutationStrategyPlan,
+        executionRoot: String,
+        config: OrchestratorConfig
+    ) async throws -> RepositoryBatchResult {
+        let workerParent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mutate4swift-workers-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: workerParent,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: workerParent) }
+
+        let emptyReports = plan.workloads
+            .filter { $0.candidateMutations == 0 }
+            .map {
+                MutationReport(
+                    results: [],
+                    sourceFile: $0.sourceFile,
+                    baselineDuration: 0
+                )
+            }
+
+        let candidateBuckets = plan.buckets.filter { !$0.workloads.isEmpty }
+        var workerResults: [WorkerBucketResult] = []
+        workerResults.reserveCapacity(candidateBuckets.count)
+
+        try await withThrowingTaskGroup(of: WorkerBucketResult.self) { group in
+            for bucket in candidateBuckets {
+                group.addTask {
+                    try executeBucket(
+                        bucket: bucket,
+                        executionRoot: executionRoot,
+                        workerParent: workerParent,
+                        config: config
+                    )
+                }
+            }
+
+            for try await result in group {
+                workerResults.append(result)
+            }
+        }
+
+        var reports = emptyReports
+        for worker in workerResults {
+            reports.append(contentsOf: worker.reports)
+        }
+        reports.sort { $0.sourceFile < $1.sourceFile }
+
+        let baselineExecutions = workerResults.reduce(0) { $0 + $1.baselineExecutions }
+        let baselineScopeCount = Set(plan.workloads.map(\.scopeKey)).count
+        let processed = plan.workloads.map(\.sourceFile)
+
+        return RepositoryBatchResult(
+            reports: reports,
+            processedSourceFiles: processed,
+            baselineExecutions: baselineExecutions,
+            baselineScopeCount: baselineScopeCount,
+            jobsUsed: plan.jobsPlanned
+        )
+    }
+
+    private static func executeBucket(
+        bucket: MutationExecutionBucket,
+        executionRoot: String,
+        workerParent: URL,
+        config: OrchestratorConfig
+    ) throws -> WorkerBucketResult {
+        let workerRoot = workerParent
+            .appendingPathComponent("worker-\(bucket.workerIndex)-\(UUID().uuidString)")
+            .path
+
+        try createWorkerPackageCopy(from: executionRoot, to: workerRoot)
+        defer { try? FileManager.default.removeItem(atPath: workerRoot) }
+
+        let workerRunner = SPMTestRunner(verbose: config.verbose)
+        let workerCoverage: CoverageProvider? = config.coverageEnabled
+            ? SPMCoverageProvider(verbose: config.verbose)
+            : nil
+        let orchestrator = Orchestrator(
+            testRunner: workerRunner,
+            coverageProvider: workerCoverage,
+            verbose: config.verbose,
+            timeoutMultiplier: config.timeoutMultiplier,
+            timeoutRetries: config.timeoutRetries,
+            buildFirstSampleSize: config.buildFirstSampleSize,
+            buildFirstErrorRatio: config.buildFirstErrorRatio
+        )
+
+        var reports: [MutationReport] = []
+        reports.reserveCapacity(bucket.workloads.count)
+        var baselineCache: [String: BaselineResult] = [:]
+        var baselineExecutions = 0
+
+        for (index, workload) in bucket.workloads.enumerated() {
+            if config.verbose {
+                print(
+                    "== [worker \(bucket.workerIndex + 1):\(index + 1)/\(bucket.workloads.count)] \(workload.sourceFile) =="
+                )
+            }
+
+            let workerSource = try remapSourceFile(
+                workload.sourceFile,
+                fromExecutionRoot: executionRoot,
+                toWorkerRoot: workerRoot
+            )
+            let baselineKey = workload.scopeKey
+            let cachedBaseline = baselineCache[baselineKey]
+
+            let workerReport = try orchestrator.run(
+                sourceFile: workerSource,
+                packagePath: workerRoot,
+                testFilter: workload.scopeFilter,
+                baselineOverride: cachedBaseline,
+                resolvedTestFilter: workload.scopeFilter
+            )
+
+            reports.append(
+                MutationReport(
+                    results: workerReport.results,
+                    sourceFile: workload.sourceFile,
+                    baselineDuration: workerReport.baselineDuration
+                )
+            )
+
+            if cachedBaseline == nil && workerReport.totalMutations > 0 {
+                baselineExecutions += 1
+                baselineCache[baselineKey] = BaselineResult(
+                    duration: workerReport.baselineDuration,
+                    timeoutMultiplier: config.timeoutMultiplier
+                )
+            }
+        }
+
+        return WorkerBucketResult(
+            reports: reports,
+            baselineExecutions: baselineExecutions
+        )
+    }
+
+    private static func createWorkerPackageCopy(from sourceRoot: String, to workerRoot: String) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(atPath: workerRoot, withIntermediateDirectories: true)
+
+        let excludedTopLevelEntries: Set<String> = [".build", ".git"]
+        for entry in try fileManager.contentsOfDirectory(atPath: sourceRoot) {
+            if excludedTopLevelEntries.contains(entry) {
+                continue
+            }
+
+            let sourcePath = (sourceRoot as NSString).appendingPathComponent(entry)
+            let destinationPath = (workerRoot as NSString).appendingPathComponent(entry)
+            try fileManager.copyItem(atPath: sourcePath, toPath: destinationPath)
+        }
+    }
+
+    private static func remapSourceFile(
+        _ sourceFile: String,
+        fromExecutionRoot executionRoot: String,
+        toWorkerRoot workerRoot: String
+    ) throws -> String {
+        let normalizedSource = URL(fileURLWithPath: sourceFile).standardizedFileURL.path
+        let normalizedRoot = URL(fileURLWithPath: executionRoot).standardizedFileURL.path
+
+        let rootPrefix = normalizedRoot + "/"
+        guard normalizedSource.hasPrefix(rootPrefix) else {
+            throw Mutate4SwiftError.invalidSourceFile(
+                "Source file \(sourceFile) is outside package root \(executionRoot)"
+            )
+        }
+
+        let relativePath = String(normalizedSource.dropFirst(normalizedRoot.count + 1))
+        return URL(fileURLWithPath: workerRoot)
+            .appendingPathComponent(relativePath)
+            .path
     }
 
     private func evaluateBuildErrorBudget(totalMutations: Int, buildErrors: Int) -> (

@@ -1,6 +1,6 @@
 import Foundation
 
-public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable {
+public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTestRunner, @unchecked Sendable {
     private let verbose: Bool
 
     public init(verbose: Bool = false) {
@@ -8,13 +8,100 @@ public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable
     }
 
     public func runTests(packagePath: String, filter: String?, timeout: TimeInterval) throws -> TestRunResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+        try runSwiftTest(
+            packagePath: packagePath,
+            filter: filter,
+            timeout: timeout,
+            skipBuild: false
+        )
+    }
 
+    public func runBuild(packagePath: String, timeout: TimeInterval) throws -> TestRunResult {
+        let result = try runCommand(
+            executable: "/usr/bin/swift",
+            args: ["build", "--package-path", packagePath, "--build-tests"],
+            timeout: timeout
+        )
+
+        if verbose {
+            print(result.output)
+        }
+
+        if result.didTimeout {
+            return .timeout
+        }
+
+        if result.terminationStatus == 0 {
+            return .passed
+        }
+
+        return .buildError
+    }
+
+    public func runTestsWithoutBuild(packagePath: String, filter: String?, timeout: TimeInterval) throws -> TestRunResult {
+        try runSwiftTest(
+            packagePath: packagePath,
+            filter: filter,
+            timeout: timeout,
+            skipBuild: true
+        )
+    }
+
+    private func runSwiftTest(
+        packagePath: String,
+        filter: String?,
+        timeout: TimeInterval,
+        skipBuild: Bool
+    ) throws -> TestRunResult {
         var args = ["test", "--package-path", packagePath]
+        if skipBuild {
+            args.append("--skip-build")
+        }
         if let filter = filter {
             args += ["--filter", filter]
         }
+
+        let result = try runCommand(
+            executable: "/usr/bin/swift",
+            args: args,
+            timeout: timeout
+        )
+
+        if result.didTimeout {
+            return .timeout
+        }
+
+        let output = result.output
+        if verbose {
+            print(output)
+        }
+
+        let status = result.terminationStatus
+        if status == 0 {
+            if !didExecuteAtLeastOneTest(output) {
+                return .noTests
+            }
+            return .passed
+        }
+
+        if indicatesNoTests(output), !didExecuteAtLeastOneTest(output) {
+            return .noTests
+        }
+
+        if output.contains("error:") && !output.contains("Build complete!") {
+            return .buildError
+        }
+
+        return .failed
+    }
+
+    private func runCommand(
+        executable: String,
+        args: [String],
+        timeout: TimeInterval
+    ) throws -> (terminationStatus: Int32, output: String, didTimeout: Bool) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
 
         let pipe = Pipe()
@@ -64,35 +151,11 @@ public final class SPMTestRunner: BaselineCapableTestRunner, @unchecked Sendable
         let finalData = outputData
         outputLock.unlock()
 
-        if didTimeout {
-            return .timeout
-        }
-
-        let output = String(decoding: finalData, as: UTF8.self)
-
-        if verbose {
-            print(output)
-        }
-
-        let status = process.terminationStatus
-
-        if status == 0 {
-            if !didExecuteAtLeastOneTest(output) {
-                return .noTests
-            }
-            return .passed
-        }
-
-        if indicatesNoTests(output), !didExecuteAtLeastOneTest(output) {
-            return .noTests
-        }
-
-        // Check if it's a build error vs test failure
-        if output.contains("error:") && !output.contains("Build complete!") {
-            return .buildError
-        }
-
-        return .failed
+        return (
+            process.terminationStatus,
+            String(decoding: finalData, as: UTF8.self),
+            didTimeout
+        )
     }
 
     /// Runs baseline tests, returning duration.

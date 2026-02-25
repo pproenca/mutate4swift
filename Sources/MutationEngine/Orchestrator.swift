@@ -5,17 +5,26 @@ public final class Orchestrator: @unchecked Sendable {
     private let coverageProvider: CoverageProvider?
     private let verbose: Bool
     private let timeoutMultiplier: Double
+    private let timeoutRetries: Int
+    private let buildFirstSampleSize: Int
+    private let buildFirstErrorRatio: Double
 
     public init(
         testRunner: TestRunner,
         coverageProvider: CoverageProvider? = nil,
         verbose: Bool = false,
-        timeoutMultiplier: Double = 10.0
+        timeoutMultiplier: Double = 10.0,
+        timeoutRetries: Int = 0,
+        buildFirstSampleSize: Int = 6,
+        buildFirstErrorRatio: Double = 0.5
     ) {
         self.testRunner = testRunner
         self.coverageProvider = coverageProvider
         self.verbose = verbose
         self.timeoutMultiplier = timeoutMultiplier
+        self.timeoutRetries = max(0, timeoutRetries)
+        self.buildFirstSampleSize = max(1, buildFirstSampleSize)
+        self.buildFirstErrorRatio = max(0, min(1, buildFirstErrorRatio))
     }
 
     public func run(
@@ -107,6 +116,10 @@ public final class Orchestrator: @unchecked Sendable {
         // Step 8: Mutation loop
         let applicator = MutationApplicator()
         var results: [MutationResult] = []
+        var processedMutations = 0
+        var buildErrorsSeen = 0
+        var buildFirstModeEnabled = false
+        let splitRunner = testRunner as? BuildSplitCapableTestRunner
 
         for (index, site) in sites.enumerated() {
             if verbose {
@@ -119,15 +132,35 @@ public final class Orchestrator: @unchecked Sendable {
 
             // Run tests
             let testResult: TestRunResult
-            do {
-                testResult = try testRunner.runTests(
-                    packagePath: packagePath,
-                    filter: autoFilter,
-                    timeout: baseline.timeout
-                )
-            } catch {
-                // If running tests fails entirely, classify as build error
-                testResult = .buildError
+            if buildFirstModeEnabled, let splitRunner {
+                let buildResult = runWithTimeoutRetry {
+                    try splitRunner.runBuild(packagePath: packagePath, timeout: baseline.timeout)
+                }
+
+                switch buildResult {
+                case .passed:
+                    testResult = runWithTimeoutRetry {
+                        try splitRunner.runTestsWithoutBuild(
+                            packagePath: packagePath,
+                            filter: autoFilter,
+                            timeout: baseline.timeout
+                        )
+                    }
+                case .timeout:
+                    testResult = .timeout
+                case .buildError, .failed:
+                    testResult = .buildError
+                case .noTests:
+                    testResult = .buildError
+                }
+            } else {
+                testResult = runWithTimeoutRetry {
+                    try testRunner.runTests(
+                        packagePath: packagePath,
+                        filter: autoFilter,
+                        timeout: baseline.timeout
+                    )
+                }
             }
 
             // Classify
@@ -153,6 +186,25 @@ public final class Orchestrator: @unchecked Sendable {
             if verbose {
                 print("  → \(outcome.rawValue.uppercased())")
             }
+
+            processedMutations += 1
+            if outcome == .buildError {
+                buildErrorsSeen += 1
+            }
+
+            if !buildFirstModeEnabled,
+               splitRunner != nil,
+               processedMutations >= buildFirstSampleSize {
+                let ratio = Double(buildErrorsSeen) / Double(processedMutations)
+                if ratio >= buildFirstErrorRatio {
+                    buildFirstModeEnabled = true
+                    if verbose {
+                        print(
+                            "Enabling build-first mode (\(buildErrorsSeen)/\(processedMutations) build errors = \(String(format: "%.2f", ratio * 100))%)"
+                        )
+                    }
+                }
+            }
         }
 
         // Step 9: Restore original
@@ -163,5 +215,30 @@ public final class Orchestrator: @unchecked Sendable {
             sourceFile: sourceFile,
             baselineDuration: baseline.duration
         )
+    }
+
+    private func runWithTimeoutRetry(action: () throws -> TestRunResult) -> TestRunResult {
+        var attempts = 0
+        while true {
+            let result: TestRunResult
+            do {
+                result = try action()
+            } catch {
+                return .buildError
+            }
+
+            if result != .timeout {
+                return result
+            }
+
+            if attempts >= timeoutRetries {
+                return .timeout
+            }
+
+            attempts += 1
+            if verbose {
+                print("  ↺ Timeout retry \(attempts)/\(timeoutRetries)")
+            }
+        }
     }
 }

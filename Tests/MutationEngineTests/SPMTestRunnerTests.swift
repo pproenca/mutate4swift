@@ -113,6 +113,39 @@ final class SPMTestRunnerTests: XCTestCase {
         }
     }
 
+    func testRunBuildAndRunTestsWithoutBuildPassed() throws {
+        try withTemporaryPackage(
+            source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
+            testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
+        ) { packagePath in
+            let runner = SPMTestRunner()
+
+            let buildResult = try runner.runBuild(
+                packagePath: packagePath.path,
+                timeout: 60
+            )
+            XCTAssertEqual(buildResult, .passed)
+
+            let testsResult = try runner.runTestsWithoutBuild(
+                packagePath: packagePath.path,
+                filter: "SamplePkgTests",
+                timeout: 60
+            )
+            XCTAssertEqual(testsResult, .passed)
+        }
+    }
+
+    func testRunBuildReturnsBuildError() throws {
+        try withTemporaryPackage(
+            source: "public enum SamplePkg { public static func value() -> Int {",
+            testMethodBody: "XCTAssertTrue(true)"
+        ) { packagePath in
+            let runner = SPMTestRunner()
+            let result = try runner.runBuild(packagePath: packagePath.path, timeout: 60)
+            XCTAssertEqual(result, .buildError)
+        }
+    }
+
     private func withTemporaryPackage(
         source: String,
         testMethodBody: String,
