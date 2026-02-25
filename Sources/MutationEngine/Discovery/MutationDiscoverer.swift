@@ -187,7 +187,6 @@ public final class MutationDiscoverer: SyntaxVisitor {
         let start = node.positionAfterSkippingLeadingTrivia
         let end = node.endPositionBeforeTrailingTrivia
         let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
-            ?? node.description.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard originalText != "\"\"" else {
             return .visitChildren
@@ -312,7 +311,6 @@ public final class MutationDiscoverer: SyntaxVisitor {
         let thenText = thenExpression.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let elseText = elseExpression.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
-            ?? "\(conditionText) ? \(thenText) : \(elseText)"
 
         addSite(
             start: start,
@@ -329,7 +327,6 @@ public final class MutationDiscoverer: SyntaxVisitor {
         let lhsText = lhs.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let rhsText = rhs.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
-            ?? "\(lhsText) ?? \(rhsText)"
 
         addSite(
             start: start,
@@ -360,15 +357,7 @@ public final class MutationDiscoverer: SyntaxVisitor {
             end = expr.endPositionBeforeTrailingTrivia
         }
 
-        guard end.utf8Offset > start.utf8Offset else {
-            return
-        }
-
         let originalText = sourceSlice(startOffset: start.utf8Offset, endOffset: end.utf8Offset)
-            ?? expr.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !originalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return
-        }
 
         addSite(
             start: start,
@@ -385,25 +374,16 @@ public final class MutationDiscoverer: SyntaxVisitor {
     }
 
     private func unwrapTryAwait(_ expr: ExprSyntax) -> ExprSyntax {
-        var current = expr
-        while true {
-            if let tryExpr = current.as(TryExprSyntax.self) {
-                current = tryExpr.expression
-                continue
-            }
-            if let awaitExpr = current.as(AwaitExprSyntax.self) {
-                current = awaitExpr.expression
-                continue
-            }
-            return current
+        if let tryExpr = expr.as(TryExprSyntax.self) {
+            return unwrapTryAwait(tryExpr.expression)
         }
+        if let awaitExpr = expr.as(AwaitExprSyntax.self) {
+            return unwrapTryAwait(awaitExpr.expression)
+        }
+        return expr
     }
 
     private func isAssignmentStatement(_ expr: ExprSyntax) -> Bool {
-        if expr.is(AssignmentExprSyntax.self) {
-            return true
-        }
-
         if let sequence = expr.as(SequenceExprSyntax.self) {
             for element in sequence.elements {
                 if element.is(AssignmentExprSyntax.self) {
@@ -416,23 +396,10 @@ public final class MutationDiscoverer: SyntaxVisitor {
             }
         }
 
-        if let infix = expr.as(InfixOperatorExprSyntax.self) {
-            if infix.operator.is(AssignmentExprSyntax.self) {
-                return true
-            }
-            if let op = infix.operator.as(BinaryOperatorExprSyntax.self),
-               isAssignmentOperator(op.operator.text) {
-                return true
-            }
-        }
-
         return false
     }
 
     private func isAssignmentOperator(_ opText: String) -> Bool {
-        if opText == "=" {
-            return true
-        }
         guard opText.hasSuffix("=") else {
             return false
         }
@@ -486,20 +453,12 @@ public final class MutationDiscoverer: SyntaxVisitor {
         ))
     }
 
-    private func sourceSlice(startOffset: Int, endOffset: Int) -> String? {
-        guard startOffset >= 0,
-              endOffset >= startOffset,
-              endOffset <= source.utf8.count else {
-            return nil
-        }
-
+    private func sourceSlice(startOffset: Int, endOffset: Int) -> String {
         let utf8View = source.utf8
-        guard let startUTF8 = utf8View.index(utf8View.startIndex, offsetBy: startOffset, limitedBy: utf8View.endIndex),
-              let endUTF8 = utf8View.index(utf8View.startIndex, offsetBy: endOffset, limitedBy: utf8View.endIndex),
-              let startIndex = String.Index(startUTF8, within: source),
-              let endIndex = String.Index(endUTF8, within: source) else {
-            return nil
-        }
+        let startUTF8 = utf8View.index(utf8View.startIndex, offsetBy: startOffset)
+        let endUTF8 = utf8View.index(utf8View.startIndex, offsetBy: endOffset)
+        let startIndex = String.Index(startUTF8, within: source)!
+        let endIndex = String.Index(endUTF8, within: source)!
 
         return String(source[startIndex..<endIndex])
     }

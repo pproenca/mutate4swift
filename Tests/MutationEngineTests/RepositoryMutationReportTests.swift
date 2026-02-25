@@ -46,6 +46,39 @@ final class RepositoryMutationReportTests: XCTestCase {
         XCTAssertEqual(report.killPercentage, 100.0)
     }
 
+    func testCodableRoundTripRebuildsSummary() throws {
+        let report = RepositoryMutationReport(
+            packagePath: "/tmp/pkg",
+            fileReports: [
+                makeFileReport(
+                    source: "A.swift",
+                    outcomes: [.killed, .survived, .buildError],
+                    baselineDuration: 1.25
+                ),
+                makeFileReport(
+                    source: "B.swift",
+                    outcomes: [.timeout, .killed, .skipped],
+                    baselineDuration: 0.75
+                ),
+            ]
+        )
+
+        let data = try JSONEncoder().encode(report)
+        let decoded = try JSONDecoder().decode(RepositoryMutationReport.self, from: data)
+
+        XCTAssertEqual(decoded.packagePath, "/tmp/pkg")
+        XCTAssertEqual(decoded.filesAnalyzed, 2)
+        XCTAssertEqual(decoded.filesWithSurvivors, 1)
+        XCTAssertEqual(decoded.baselineDuration, 2.0, accuracy: 0.001)
+        XCTAssertEqual(decoded.totalMutations, 6)
+        XCTAssertEqual(decoded.killed, 2)
+        XCTAssertEqual(decoded.survived, 1)
+        XCTAssertEqual(decoded.timedOut, 1)
+        XCTAssertEqual(decoded.buildErrors, 1)
+        XCTAssertEqual(decoded.skipped, 1)
+        XCTAssertEqual(decoded.killPercentage, 75.0)
+    }
+
     private func makeFileReport(
         source: String,
         outcomes: [MutationOutcome],

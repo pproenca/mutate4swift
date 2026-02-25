@@ -53,9 +53,7 @@ public final class SPMTestRunner: TestRunner, @unchecked Sendable {
             didTimeout = true
             process.terminate()
             Thread.sleep(forTimeInterval: 0.5)
-            if process.isRunning {
-                process.interrupt()
-            }
+            process.interrupt()
         }
 
         // Stop reading and collect any remaining data
@@ -70,7 +68,7 @@ public final class SPMTestRunner: TestRunner, @unchecked Sendable {
             return .timeout
         }
 
-        let output = String(data: finalData, encoding: .utf8) ?? ""
+        let output = String(decoding: finalData, as: UTF8.self)
 
         if verbose {
             print(output)

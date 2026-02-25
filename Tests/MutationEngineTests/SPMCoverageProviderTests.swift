@@ -74,6 +74,52 @@ final class SPMCoverageProviderTests: XCTestCase {
         }
     }
 
+    func testFindCodecovJSONThrowsWhenNoTestBinaryExists() throws {
+        let provider = SPMCoverageProvider()
+        try withTemporaryDirectory { packagePath in
+            let buildPath = packagePath.appendingPathComponent(".build")
+            let profdata = buildPath.appendingPathComponent("debug/codecov/default.profdata")
+            try write("", to: profdata)
+
+            XCTAssertThrowsError(
+                try provider.findCodecovJSON(
+                    buildPath: buildPath.path,
+                    packagePath: packagePath.path
+                )
+            ) { error in
+                guard case .coverageDataUnavailable = error as? Mutate4SwiftError else {
+                    XCTFail("Expected coverageDataUnavailable, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    func testFindCodecovJSONUsesAltBinaryAndFailsExportForInvalidBinary() throws {
+        let provider = SPMCoverageProvider()
+        try withTemporaryDirectory { packagePath in
+            let buildPath = packagePath.appendingPathComponent(".build")
+            let profdata = buildPath.appendingPathComponent("debug/codecov/default.profdata")
+            try write("", to: profdata)
+
+            let packageName = packagePath.lastPathComponent
+            let altBinary = buildPath.appendingPathComponent("debug/\(packageName)PackageTests")
+            try write("not a Mach-O binary", to: altBinary)
+
+            XCTAssertThrowsError(
+                try provider.findCodecovJSON(
+                    buildPath: buildPath.path,
+                    packagePath: packagePath.path
+                )
+            ) { error in
+                guard case .coverageDataUnavailable = error as? Mutate4SwiftError else {
+                    XCTFail("Expected coverageDataUnavailable, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
     func testCoveredLinesFailsForInvalidPackagePath() {
         let provider = SPMCoverageProvider()
         XCTAssertThrowsError(

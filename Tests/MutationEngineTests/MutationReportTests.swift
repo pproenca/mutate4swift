@@ -116,4 +116,21 @@ final class MutationReportTests: XCTestCase {
         XCTAssertEqual(r.buildErrors, 1)
         XCTAssertEqual(r.skipped, 1)
     }
+
+    func testCodableRoundTripRebuildsSummary() throws {
+        let original = report([.killed, .survived, .timeout, .buildError, .skipped])
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(MutationReport.self, from: data)
+
+        XCTAssertEqual(decoded.sourceFile, "Test.swift")
+        XCTAssertEqual(decoded.baselineDuration, 1.0)
+        XCTAssertEqual(decoded.totalMutations, 5)
+        XCTAssertEqual(decoded.killed, 1)
+        XCTAssertEqual(decoded.survived, 1)
+        XCTAssertEqual(decoded.timedOut, 1)
+        XCTAssertEqual(decoded.buildErrors, 1)
+        XCTAssertEqual(decoded.skipped, 1)
+        XCTAssertEqual(decoded.killPercentage, 2.0 / 3.0 * 100.0)
+    }
 }
