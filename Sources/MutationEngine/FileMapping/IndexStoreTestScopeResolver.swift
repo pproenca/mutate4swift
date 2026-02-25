@@ -2,7 +2,7 @@ import Foundation
 import IndexStoreDB
 
 protocol IndexStoreTestScopeResolving: Sendable {
-    func resolveTestFilter(forSourceFile sourceFile: String) -> String?
+    func resolveTestFilter(forSourceFile sourceFile: String) async -> String?
 }
 
 final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecked Sendable {
@@ -28,12 +28,52 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         let modifiedAt: Date
     }
 
+    private actor PackageResolverActor {
+        private let packagePath: String
+        private unowned let resolver: IndexStoreTestScopeResolver
+        private var context = PackageContext()
+
+        init(packagePath: String, resolver: IndexStoreTestScopeResolver) {
+            self.packagePath = packagePath
+            self.resolver = resolver
+        }
+
+        func resolve(sourceFileCandidates: [String], normalizedSourcePath: String) -> String? {
+            if let cached = context.cachedFilters[normalizedSourcePath] {
+                switch cached {
+                case .scope(let scope):
+                    return scope
+                case .noScope:
+                    return nil
+                }
+            }
+
+            guard resolver.prepareContext(
+                &context,
+                packagePath: packagePath,
+                sourceFileCandidates: sourceFileCandidates
+            ) else {
+                context.cachedFilters[normalizedSourcePath] = .noScope
+                return nil
+            }
+
+            let filter = resolver.buildScopeFilter(
+                sourceFileCandidates: sourceFileCandidates,
+                sourceFileCandidateSet: Set(sourceFileCandidates),
+                packagePath: packagePath,
+                index: context.index
+            )
+            context.cachedFilters[normalizedSourcePath] = filter.map(CachedFilter.scope) ?? .noScope
+            return filter
+        }
+    }
+
     private let fileManager: FileManager
     private let forcedIndexStoreLibraryPath: String?
     private let allowAutomaticLibraryResolution: Bool
 
     private let lock = NSLock()
-    private var contexts: [String: PackageContext] = [:]
+    private var packageResolvers: [String: PackageResolverActor] = [:]
 
     init(
         fileManager: FileManager = .default,
@@ -45,47 +85,31 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         self.allowAutomaticLibraryResolution = allowAutomaticLibraryResolution
     }
 
-    func resolveTestFilter(forSourceFile sourceFile: String) -> String? {
+    func resolveTestFilter(forSourceFile sourceFile: String) async -> String? {
         let sourcePathCandidates = lookupPathCandidates(for: sourceFile)
         guard let normalizedSourcePath = sourcePathCandidates.first,
               let packagePath = packagePath(forSourceFile: normalizedSourcePath) else {
             return nil
         }
         let normalizedPackagePath = standardizedPath(packagePath)
+        let resolver = packageResolver(for: normalizedPackagePath)
+        return await resolver.resolve(
+            sourceFileCandidates: sourcePathCandidates,
+            normalizedSourcePath: normalizedSourcePath
+        )
+    }
 
+    private func packageResolver(for packagePath: String) -> PackageResolverActor {
         lock.lock()
         defer { lock.unlock() }
 
-        var context = contexts[normalizedPackagePath] ?? PackageContext()
-        if let cached = context.cachedFilters[normalizedSourcePath] {
-            contexts[normalizedPackagePath] = context
-            switch cached {
-            case .scope(let scope):
-                return scope
-            case .noScope:
-                return nil
-            }
+        if let existing = packageResolvers[packagePath] {
+            return existing
         }
 
-        guard prepareContext(
-            &context,
-            packagePath: normalizedPackagePath,
-            sourceFileCandidates: sourcePathCandidates
-        ) else {
-            context.cachedFilters[normalizedSourcePath] = .noScope
-            contexts[normalizedPackagePath] = context
-            return nil
-        }
-
-        let filter = buildScopeFilter(
-            sourceFileCandidates: sourcePathCandidates,
-            sourceFileCandidateSet: Set(sourcePathCandidates),
-            packagePath: normalizedPackagePath,
-            index: context.index
-        )
-        context.cachedFilters[normalizedSourcePath] = filter.map(CachedFilter.scope) ?? .noScope
-        contexts[normalizedPackagePath] = context
-        return filter
+        let created = PackageResolverActor(packagePath: packagePath, resolver: self)
+        packageResolvers[packagePath] = created
+        return created
     }
 
     private func prepareContext(

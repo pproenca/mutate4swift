@@ -3,8 +3,8 @@ import XCTest
 @testable import MutationEngine
 
 final class MutationStrategyPlannerTests: XCTestCase {
-    func testBuildPlanDistributesWorkloadsAcrossBuckets() throws {
-        try withTemporaryPackage { packageRoot in
+    func testBuildPlanDistributesWorkloadsAcrossBuckets() async throws {
+        try await withTemporaryPackage { packageRoot in
             let fileA = packageRoot.appendingPathComponent("Sources/MyLib/A.swift")
             let fileB = packageRoot.appendingPathComponent("Sources/MyLib/B.swift")
             let fileC = packageRoot.appendingPathComponent("Sources/MyLib/C.swift")
@@ -14,7 +14,7 @@ final class MutationStrategyPlannerTests: XCTestCase {
             try write("let a = true\nlet b = false\nlet c = true\n", to: fileC)
 
             let planner = MutationStrategyPlanner()
-            let plan = try planner.buildPlan(
+            let plan = try await planner.buildPlan(
                 sourceFiles: [fileA.path, fileB.path, fileC.path],
                 packagePath: packageRoot.path,
                 testFilterOverride: "MyLibTests",
@@ -36,8 +36,8 @@ final class MutationStrategyPlannerTests: XCTestCase {
         }
     }
 
-    func testBuildPlanMarksUncoveredFilesWhenCoverageEliminatesAllSites() throws {
-        try withTemporaryPackage { packageRoot in
+    func testBuildPlanMarksUncoveredFilesWhenCoverageEliminatesAllSites() async throws {
+        try await withTemporaryPackage { packageRoot in
             let coveredFile = packageRoot.appendingPathComponent("Sources/MyLib/Covered.swift")
             let uncoveredFile = packageRoot.appendingPathComponent("Sources/MyLib/Uncovered.swift")
 
@@ -50,7 +50,7 @@ final class MutationStrategyPlannerTests: XCTestCase {
             ])
             let planner = MutationStrategyPlanner(coverageProvider: coverage)
 
-            let plan = try planner.buildPlan(
+            let plan = try await planner.buildPlan(
                 sourceFiles: [coveredFile.path, uncoveredFile.path],
                 packagePath: packageRoot.path,
                 testFilterOverride: "MyLibTests",
@@ -62,13 +62,13 @@ final class MutationStrategyPlannerTests: XCTestCase {
         }
     }
 
-    func testBuildPlanCapsJobsToCandidateWorkloads() throws {
-        try withTemporaryPackage { packageRoot in
+    func testBuildPlanCapsJobsToCandidateWorkloads() async throws {
+        try await withTemporaryPackage { packageRoot in
             let file = packageRoot.appendingPathComponent("Sources/MyLib/Single.swift")
             try write("let value = true\n", to: file)
 
             let planner = MutationStrategyPlanner()
-            let plan = try planner.buildPlan(
+            let plan = try await planner.buildPlan(
                 sourceFiles: [file.path],
                 packagePath: packageRoot.path,
                 testFilterOverride: "MyLibTests",
@@ -79,8 +79,8 @@ final class MutationStrategyPlannerTests: XCTestCase {
         }
     }
 
-    func testBuildPlanWithoutOverrideResolvesScopesWithoutCrashing() throws {
-        try withTemporaryPackage { packageRoot in
+    func testBuildPlanWithoutOverrideResolvesScopesWithoutCrashing() async throws {
+        try await withTemporaryPackage { packageRoot in
             let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")
             try write(
                 """
@@ -105,7 +105,7 @@ final class MutationStrategyPlannerTests: XCTestCase {
             )
 
             let planner = MutationStrategyPlanner()
-            let plan = try planner.buildPlan(
+            let plan = try await planner.buildPlan(
                 sourceFiles: [sourceFile.path],
                 packagePath: packageRoot.path,
                 jobs: 1
@@ -116,7 +116,38 @@ final class MutationStrategyPlannerTests: XCTestCase {
         }
     }
 
-    private func withTemporaryPackage(_ body: (URL) throws -> Void) throws {
+    func testBuildPlanKeepsDominantScopeMostlyAnchoredToOneWorker() async throws {
+        try await withTemporaryPackage { packageRoot in
+            var sourceFiles: [String] = []
+            for index in 1...6 {
+                let file = packageRoot.appendingPathComponent("Sources/MyLib/File\(index).swift")
+                try write(
+                    """
+                    let a\(index) = true
+                    let b\(index) = false
+                    let c\(index) = true
+                    """,
+                    to: file
+                )
+                sourceFiles.append(file.path)
+            }
+
+            let planner = MutationStrategyPlanner()
+            let plan = try await planner.buildPlan(
+                sourceFiles: sourceFiles,
+                packagePath: packageRoot.path,
+                testFilterOverride: "MyLibTests",
+                jobs: 3
+            )
+
+            let workersWithScope = plan.buckets.filter { bucket in
+                bucket.workloads.contains { $0.scopeFilter == "MyLibTests" }
+            }
+            XCTAssertLessThanOrEqual(workersWithScope.count, 2)
+        }
+    }
+
+    private func withTemporaryPackage(_ body: (URL) async throws -> Void) async throws {
         let packageRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("MutationStrategyPlannerTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
@@ -137,7 +168,7 @@ final class MutationStrategyPlannerTests: XCTestCase {
         try write(packageSwift, to: packageRoot.appendingPathComponent("Package.swift"))
         try write("import XCTest\n", to: packageRoot.appendingPathComponent("Tests/MyLibTests/SmokeTests.swift"))
 
-        try body(packageRoot)
+        try await body(packageRoot)
     }
 
     private func write(_ content: String, to path: URL) throws {

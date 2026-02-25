@@ -145,6 +145,43 @@ final class SPMCoverageProviderTests: XCTestCase {
         }
     }
 
+    func testPersistentCoverageCacheRoundTrip() throws {
+        let provider = SPMCoverageProvider()
+        try withTemporaryDirectory { packagePath in
+            let coverageByFile: [String: Set<Int>] = [
+                "/tmp/A.swift": [1, 3, 5],
+                "/tmp/B.swift": [2],
+            ]
+            let cacheKey = "prof-123-456"
+
+            try provider.savePersistentCoverage(
+                packagePath: packagePath.path,
+                cacheKey: cacheKey,
+                coverageByFile: coverageByFile
+            )
+
+            let loaded = try provider.loadPersistentCoverage(
+                packagePath: packagePath.path,
+                cacheKey: cacheKey
+            )
+            XCTAssertEqual(loaded, coverageByFile)
+        }
+    }
+
+    func testCoverageCacheKeyUsesProfdataMetadata() throws {
+        let provider = SPMCoverageProvider()
+        try withTemporaryDirectory { packagePath in
+            let profdata = packagePath.appendingPathComponent(".build/debug/codecov/default.profdata")
+            try write("profile-data", to: profdata)
+
+            let key = provider.coverageCacheKey(
+                buildPath: packagePath.appendingPathComponent(".build").path
+            )
+            XCTAssertNotNil(key)
+            XCTAssertTrue(key?.hasPrefix("prof-") == true)
+        }
+    }
+
     private func withTemporarySwiftPackage(
         _ body: (URL, URL) throws -> Void
     ) throws {

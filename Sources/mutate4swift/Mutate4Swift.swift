@@ -220,7 +220,7 @@ struct Mutate4Swift: AsyncParsableCommand {
                 }
 
                 let planner = MutationStrategyPlanner(coverageProvider: coverageProvider)
-                let plan = try planner.buildPlan(
+                let plan = try await planner.buildPlan(
                     sourceFiles: sourceFilesForPlan,
                     packagePath: executionRoot,
                     testFilterOverride: testFilter,
@@ -295,9 +295,13 @@ struct Mutate4Swift: AsyncParsableCommand {
                     buildFirstSampleSize: buildFirstSampleSize,
                     buildFirstErrorRatio: buildFirstErrorRatio
                 )
-                let resolvedSingleFileFilter: String? = usesXcodeRunner
-                    ? testFilter
-                    : (testFilter ?? TestFileMapper().testFilter(forSourceFile: resolvedSource))
+                let resolvedSingleFileFilter: String? = if usesXcodeRunner {
+                    testFilter
+                } else if let testFilter {
+                    testFilter
+                } else {
+                    await TestFileMapper().testFilterAsync(forSourceFile: resolvedSource)
+                }
                 let report: MutationReport
                 if usesXcodeRunner {
                     report = try orchestrator.run(
@@ -462,7 +466,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         let config = orchestratorConfig()
 
         if jobs <= 1 {
-            return try Self.runRepositoryMutationBatchSerial(
+            return try await Self.runRepositoryMutationBatchSerial(
                 sourceFiles: sourceFiles,
                 executionRoot: executionRoot,
                 testRunner: testRunner,
@@ -472,7 +476,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         }
 
         let planner = MutationStrategyPlanner(coverageProvider: coverageProvider)
-        let plan = try planner.buildPlan(
+        let plan = try await planner.buildPlan(
             sourceFiles: sourceFiles,
             packagePath: executionRoot,
             testFilterOverride: config.testFilterOverride,
@@ -480,7 +484,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         )
 
         if plan.jobsPlanned <= 1 {
-            return try Self.runRepositoryMutationBatchSerial(
+            return try await Self.runRepositoryMutationBatchSerial(
                 sourceFiles: sourceFiles,
                 executionRoot: executionRoot,
                 testRunner: testRunner,
@@ -502,7 +506,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         testRunner: TestRunner,
         coverageProvider: CoverageProvider?,
         config: OrchestratorConfig
-    ) throws -> RepositoryBatchResult {
+    ) async throws -> RepositoryBatchResult {
         let workspaceRoot = try prepareMutationRunDirectory(
             in: executionRoot,
             prefix: "serial"
@@ -532,7 +536,11 @@ struct Mutate4Swift: AsyncParsableCommand {
                 print("== [\(index + 1)/\(sourceFiles.count)] \(sourceFile) ==")
             }
 
-            let resolvedFilter = config.testFilterOverride ?? mapper.testFilter(forSourceFile: sourceFile)
+            let resolvedFilter = if let override = config.testFilterOverride {
+                override
+            } else {
+                await mapper.testFilterAsync(forSourceFile: sourceFile)
+            }
             let baselineKey = resolvedFilter ?? "__all_tests__"
             baselineScopes.insert(baselineKey)
             let cachedBaseline = baselineCache[baselineKey]

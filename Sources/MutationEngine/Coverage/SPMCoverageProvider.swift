@@ -1,6 +1,10 @@
 import Foundation
 
 public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
+    private struct PersistentCoverageCache: Codable {
+        let linesByFile: [String: [Int]]
+    }
+
     private let verbose: Bool
     private let cacheLock = NSLock()
     private var coverageByPackageCache: [String: [String: Set<Int>]] = [:]
@@ -12,6 +16,7 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
     public func coveredLines(forFile filePath: String, packagePath: String) throws -> Set<Int> {
         let normalizedPackagePath = (packagePath as NSString).standardizingPath
         let normalizedFilePath = (filePath as NSString).standardizingPath
+        let buildPath = (normalizedPackagePath as NSString).appendingPathComponent(".build")
 
         cacheLock.lock()
         if let cachedCoverage = coverageByPackageCache[normalizedPackagePath] {
@@ -20,6 +25,18 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
             return lines
         }
         cacheLock.unlock()
+
+        if let cacheKey = coverageCacheKey(buildPath: buildPath),
+           let persistedCoverage = try? loadPersistentCoverage(
+               packagePath: normalizedPackagePath,
+               cacheKey: cacheKey
+           ) {
+            cacheLock.lock()
+            coverageByPackageCache[normalizedPackagePath] = persistedCoverage
+            let lines = persistedCoverage[normalizedFilePath] ?? []
+            cacheLock.unlock()
+            return lines
+        }
 
         // Run swift test with coverage enabled
         let buildProcess = Process()
@@ -38,7 +55,6 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         }
 
         // Find the profdata and binary
-        let buildPath = (normalizedPackagePath as NSString).appendingPathComponent(".build")
         let codecovPath = try findCodecovJSON(buildPath: buildPath, packagePath: normalizedPackagePath)
         let coverageByFile = try parseCoverageMap(codecovPath: codecovPath)
 
@@ -46,6 +62,14 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         coverageByPackageCache[normalizedPackagePath] = coverageByFile
         let lines = coverageByFile[normalizedFilePath] ?? []
         cacheLock.unlock()
+
+        if let cacheKey = coverageCacheKey(buildPath: buildPath) {
+            try? savePersistentCoverage(
+                packagePath: normalizedPackagePath,
+                cacheKey: cacheKey,
+                coverageByFile: coverageByFile
+            )
+        }
 
         return lines
     }
@@ -81,7 +105,7 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
     }
 
     func exportCoverage(binaryPath: String, profdataPath: String) throws -> String {
-        let outputPath = NSTemporaryDirectory() + "mutate4swift_coverage.json"
+        let outputPath = NSTemporaryDirectory() + "mutate4swift_coverage_\(UUID().uuidString).json"
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
@@ -105,6 +129,72 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         try data.write(to: URL(fileURLWithPath: outputPath))
 
         return outputPath
+    }
+
+    func coverageCacheKey(buildPath: String) -> String? {
+        let profdataPath = (buildPath as NSString)
+            .appendingPathComponent("debug/codecov/default.profdata")
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: profdataPath),
+              let modificationDate = attributes[.modificationDate] as? Date,
+              let sizeNumber = attributes[.size] as? NSNumber else {
+            return nil
+        }
+
+        let mtimeMillis = Int64((modificationDate.timeIntervalSince1970 * 1000).rounded())
+        return "prof-\(sizeNumber.int64Value)-\(mtimeMillis)"
+    }
+
+    func loadPersistentCoverage(
+        packagePath: String,
+        cacheKey: String
+    ) throws -> [String: Set<Int>] {
+        let cachePath = persistentCoverageCachePath(
+            packagePath: packagePath,
+            cacheKey: cacheKey
+        )
+        guard FileManager.default.fileExists(atPath: cachePath) else {
+            throw Mutate4SwiftError.coverageDataUnavailable
+        }
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: cachePath))
+        let decoded = try JSONDecoder().decode(PersistentCoverageCache.self, from: data)
+        return decoded.linesByFile.reduce(into: [String: Set<Int>]()) { partial, entry in
+            partial[entry.key] = Set(entry.value)
+        }
+    }
+
+    func savePersistentCoverage(
+        packagePath: String,
+        cacheKey: String,
+        coverageByFile: [String: Set<Int>]
+    ) throws {
+        let cacheDirectory = persistentCoverageCacheDirectory(packagePath: packagePath)
+        try FileManager.default.createDirectory(
+            atPath: cacheDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let serializable = PersistentCoverageCache(
+            linesByFile: coverageByFile.reduce(into: [String: [Int]]()) { partial, entry in
+                partial[entry.key] = entry.value.sorted()
+            }
+        )
+        let data = try JSONEncoder().encode(serializable)
+        let cachePath = persistentCoverageCachePath(
+            packagePath: packagePath,
+            cacheKey: cacheKey
+        )
+        try data.write(to: URL(fileURLWithPath: cachePath), options: .atomic)
+    }
+
+    func persistentCoverageCacheDirectory(packagePath: String) -> String {
+        (packagePath as NSString)
+            .appendingPathComponent(".mutate4swift/cache/coverage")
+    }
+
+    func persistentCoverageCachePath(packagePath: String, cacheKey: String) -> String {
+        (persistentCoverageCacheDirectory(packagePath: packagePath) as NSString)
+            .appendingPathComponent("\(cacheKey).json")
     }
 
     func parseCoverage(codecovPath: String, filePath: String) throws -> Set<Int> {
