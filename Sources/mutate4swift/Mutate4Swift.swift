@@ -295,12 +295,15 @@ struct Mutate4Swift: AsyncParsableCommand {
                     buildFirstSampleSize: buildFirstSampleSize,
                     buildFirstErrorRatio: buildFirstErrorRatio
                 )
+                let resolvedSingleFileFilter: String? = usesXcodeRunner
+                    ? testFilter
+                    : (testFilter ?? TestFileMapper().testFilter(forSourceFile: resolvedSource))
                 let report: MutationReport
                 if usesXcodeRunner {
                     report = try orchestrator.run(
                         sourceFile: resolvedSource,
                         packagePath: executionRoot,
-                        testFilter: testFilter,
+                        testFilter: resolvedSingleFileFilter,
                         lines: lineSet
                     )
                 } else {
@@ -319,8 +322,9 @@ struct Mutate4Swift: AsyncParsableCommand {
                     let workspaceReport = try orchestrator.run(
                         sourceFile: workspaceSource,
                         packagePath: workspaceRoot.path,
-                        testFilter: testFilter,
-                        lines: lineSet
+                        testFilter: resolvedSingleFileFilter,
+                        lines: lineSet,
+                        resolvedTestFilter: resolvedSingleFileFilter
                     )
                     report = MutationReport(
                         results: workspaceReport.results,

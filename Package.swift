@@ -12,6 +12,10 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+        .package(
+            url: "https://github.com/swiftlang/indexstore-db.git",
+            revision: "0cd9a889a3d3743bd4d309c8f89ff73a805c6474"
+        ),
     ],
     targets: [
         .target(
@@ -19,6 +23,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "IndexStoreDB", package: "indexstore-db"),
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

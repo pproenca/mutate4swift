@@ -79,6 +79,43 @@ final class MutationStrategyPlannerTests: XCTestCase {
         }
     }
 
+    func testBuildPlanWithoutOverrideResolvesScopesWithoutCrashing() throws {
+        try withTemporaryPackage { packageRoot in
+            let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")
+            try write(
+                """
+                public enum Calculator {
+                    public static func value() -> Int { 42 }
+                }
+                """,
+                to: sourceFile
+            )
+            try write(
+                """
+                import XCTest
+                @testable import MyLib
+
+                final class ScopeTests: XCTestCase {
+                    func testValue() {
+                        XCTAssertEqual(Calculator.value(), 42)
+                    }
+                }
+                """,
+                to: packageRoot.appendingPathComponent("Tests/MyLibTests/ScopeTests.swift")
+            )
+
+            let planner = MutationStrategyPlanner()
+            let plan = try planner.buildPlan(
+                sourceFiles: [sourceFile.path],
+                packagePath: packageRoot.path,
+                jobs: 1
+            )
+
+            XCTAssertEqual(plan.workloads.count, 1)
+            XCTAssertEqual(plan.workloads[0].sourceFile, sourceFile.path)
+        }
+    }
+
     private func withTemporaryPackage(_ body: (URL) throws -> Void) throws {
         let packageRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("MutationStrategyPlannerTests-\(UUID().uuidString)")
