@@ -80,7 +80,7 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
         process.standardError = Pipe()
 
         try process.run()
-        process.waitUntilExit()
+        
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         try data.write(to: URL(fileURLWithPath: outputPath))

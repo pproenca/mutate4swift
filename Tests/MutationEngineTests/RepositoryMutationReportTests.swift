@@ -31,6 +31,21 @@ final class RepositoryMutationReportTests: XCTestCase {
         XCTAssertEqual(report.killPercentage, 75.0)
     }
 
+    func testKillPercentageReturnsHundredWhenNoEffectiveMutations() {
+        let report = RepositoryMutationReport(
+            packagePath: "/tmp/pkg",
+            fileReports: [
+                makeFileReport(
+                    source: "A.swift",
+                    outcomes: [.buildError, .skipped],
+                    baselineDuration: 1.0
+                ),
+            ]
+        )
+
+        XCTAssertEqual(report.killPercentage, 100.0)
+    }
+
     private func makeFileReport(
         source: String,
         outcomes: [MutationOutcome],

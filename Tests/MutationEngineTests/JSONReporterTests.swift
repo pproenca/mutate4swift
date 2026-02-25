@@ -30,4 +30,14 @@ final class JSONReporterTests: XCTestCase {
         XCTAssertTrue(json.contains("\"sourceFile\""))
         XCTAssertTrue(json.contains("\"survived\""))
     }
+
+    func testReportReturnsEmptyObjectWhenEncodingFails() {
+        let report = MutationReport(
+            results: [],
+            sourceFile: "Sources/Foo.swift",
+            baselineDuration: .nan
+        )
+
+        XCTAssertEqual(reporter.report(report), "{}")
+    }
 }

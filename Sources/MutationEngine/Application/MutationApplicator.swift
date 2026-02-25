@@ -17,6 +17,6 @@ public struct MutationApplicator: Sendable {
         let replacement = Array(site.mutatedText.utf8)
         bytes.replaceSubrange(start..<end, with: replacement)
 
-        return String(bytes: bytes, encoding: .utf8) ?? source
+        return String(decoding: bytes, as: UTF8.self)
     }
 }

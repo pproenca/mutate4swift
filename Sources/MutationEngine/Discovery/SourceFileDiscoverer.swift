@@ -20,7 +20,7 @@ public struct SourceFileDiscoverer: Sendable {
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
-            return []
+            throw Mutate4SwiftError.invalidSourceFile("Failed to enumerate source files under \(sourcesURL.path)")
         }
 
         var files: [String] = []
