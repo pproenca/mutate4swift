@@ -16,6 +16,12 @@ struct Mutate4Swift: ParsableCommand {
     @Flag(name: .long, help: "Mutate all Swift source files under Sources/ (SwiftPM mode only)")
     var all: Bool = false
 
+    @Flag(name: .long, help: "Analyze mutation strategy and exit without mutating files")
+    var strategyReport: Bool = false
+
+    @Option(name: .long, help: "Number of planning buckets for --strategy-report (default: 1)")
+    var jobs: Int = 1
+
     @Option(name: .long, help: "SPM package root (auto-detected if omitted)")
     var packagePath: String?
 
@@ -94,6 +100,10 @@ struct Mutate4Swift: ParsableCommand {
             throw ValidationError("--max-build-error-ratio must be in [0,1].")
         }
 
+        guard jobs >= 1 else {
+            throw ValidationError("--jobs must be >= 1.")
+        }
+
         if usesXcodeRunner {
             if all {
                 throw ValidationError("--all is currently only supported in SwiftPM mode.")
@@ -169,6 +179,47 @@ struct Mutate4Swift: ParsableCommand {
                     scorecard.workspaceSafetyGate = .failed("Git working tree is dirty")
                     throw Mutate4SwiftError.workingTreeDirty(executionRoot)
                 }
+            }
+
+            if strategyReport {
+                let sourceFilesForPlan: [String]
+                if all {
+                    let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
+                    if sourceFiles.isEmpty {
+                        throw Mutate4SwiftError.invalidSourceFile(
+                            "No Swift source files found under \(executionRoot)/Sources"
+                        )
+                    }
+                    sourceFilesForPlan = sourceFiles
+                } else {
+                    guard let resolvedSource else {
+                        throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
+                    }
+                    sourceFilesForPlan = [resolvedSource]
+                }
+
+                let planner = MutationStrategyPlanner(coverageProvider: coverageProvider)
+                let plan = try planner.buildPlan(
+                    sourceFiles: sourceFilesForPlan,
+                    packagePath: executionRoot,
+                    testFilterOverride: testFilter,
+                    jobs: jobs
+                )
+
+                if json {
+                    print(StrategyReporter.jsonReport(for: plan))
+                } else {
+                    print(StrategyReporter.textReport(for: plan))
+                }
+
+                scorecard.baselineGate = .skipped("Strategy-only run")
+                scorecard.noTestsGate = .skipped("Strategy-only run")
+                scorecard.buildErrorBudgetGate = .skipped("Strategy-only run")
+                scorecard.restoreGuaranteeGate = .passed("No source mutation executed")
+                scorecard.scaleEfficiencyGate = .passed(
+                    "Planned \(plan.filesWithCandidateMutations) file(s) across \(plan.jobsPlanned) bucket(s)"
+                )
+                return
             }
 
             let orchestrator = Orchestrator(
