@@ -46,8 +46,9 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
     }
 
     func resolveTestFilter(forSourceFile sourceFile: String) -> String? {
-        let normalizedSourcePath = standardizedPath(sourceFile)
-        guard let packagePath = packagePath(forSourceFile: normalizedSourcePath) else {
+        let sourcePathCandidates = lookupPathCandidates(for: sourceFile)
+        guard let normalizedSourcePath = sourcePathCandidates.first,
+              let packagePath = packagePath(forSourceFile: normalizedSourcePath) else {
             return nil
         }
         let normalizedPackagePath = standardizedPath(packagePath)
@@ -69,7 +70,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         guard prepareContext(
             &context,
             packagePath: normalizedPackagePath,
-            sourceFile: normalizedSourcePath
+            sourceFileCandidates: sourcePathCandidates
         ) else {
             context.cachedFilters[normalizedSourcePath] = .noScope
             contexts[normalizedPackagePath] = context
@@ -77,7 +78,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         }
 
         let filter = buildScopeFilter(
-            sourceFile: normalizedSourcePath,
+            sourceFileCandidates: sourcePathCandidates,
             packagePath: normalizedPackagePath,
             index: context.index
         )
@@ -89,7 +90,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
     private func prepareContext(
         _ context: inout PackageContext,
         packagePath: String,
-        sourceFile: String
+        sourceFileCandidates: [String]
     ) -> Bool {
         if context.indexStorePath == nil {
             context.indexStorePath = discoverIndexStorePath(in: packagePath)
@@ -116,7 +117,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         refreshIndexIfNeeded(
             &context,
             packagePath: packagePath,
-            sourceFile: sourceFile
+            sourceFileCandidates: sourceFileCandidates
         )
         return context.index != nil
     }
@@ -158,7 +159,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
     private func refreshIndexIfNeeded(
         _ context: inout PackageContext,
         packagePath: String,
-        sourceFile: String
+        sourceFileCandidates: [String]
     ) {
         guard let index = context.index else {
             return
@@ -166,7 +167,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         guard !context.attemptedRefreshBuild else {
             return
         }
-        guard sourceNeedsRefresh(sourceFile: sourceFile, index: index) else {
+        guard sourceNeedsRefresh(sourceFileCandidates: sourceFileCandidates, index: index) else {
             return
         }
 
@@ -289,28 +290,35 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         return process.terminationStatus == 0
     }
 
-    private func sourceNeedsRefresh(sourceFile: String, index: IndexStoreDB) -> Bool {
-        guard let sourceDate = sourceModificationDate(path: sourceFile) else {
+    private func sourceNeedsRefresh(sourceFileCandidates: [String], index: IndexStoreDB) -> Bool {
+        guard let sourceDate = sourceModificationDate(paths: sourceFileCandidates) else {
             return false
         }
 
-        guard let latestIndexedUnit = index.dateOfLatestUnitFor(filePath: sourceFile) else {
+        let latestIndexedUnit = sourceFileCandidates
+            .compactMap { index.dateOfLatestUnitFor(filePath: $0) }
+            .max()
+
+        guard let latestIndexedUnit else {
             return true
         }
 
         return sourceDate > latestIndexedUnit
     }
 
-    private func sourceModificationDate(path: String) -> Date? {
-        guard let attributes = try? fileManager.attributesOfItem(atPath: path),
-              let modificationDate = attributes[.modificationDate] as? Date else {
-            return nil
+    private func sourceModificationDate(paths: [String]) -> Date? {
+        for path in paths {
+            guard let attributes = try? fileManager.attributesOfItem(atPath: path),
+                  let modificationDate = attributes[.modificationDate] as? Date else {
+                continue
+            }
+            return modificationDate
         }
-        return modificationDate
+        return nil
     }
 
     private func buildScopeFilter(
-        sourceFile: String,
+        sourceFileCandidates: [String],
         packagePath: String,
         index: IndexStoreDB?
     ) -> String? {
@@ -318,11 +326,15 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
             return nil
         }
 
-        var mainFiles = index.mainFilesContainingFile(path: sourceFile)
-            .map(standardizedPath)
+        var mainFiles: [String] = []
+        for sourceFile in sourceFileCandidates {
+            mainFiles.append(
+                contentsOf: index.mainFilesContainingFile(path: sourceFile).map(standardizedPath)
+            )
+        }
 
         if mainFiles.isEmpty {
-            mainFiles = [sourceFile]
+            mainFiles = sourceFileCandidates
         }
 
         let normalizedMainFiles = Array(Set(mainFiles)).sorted()
@@ -337,6 +349,24 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
                 continue
             }
             testTargets.insert(target)
+        }
+
+        if testTargets.isEmpty {
+            for occurrence in testOccurrences {
+                let testPath = standardizedPath(occurrence.location.path)
+                guard let target = testTargetName(for: testPath) else {
+                    continue
+                }
+                testTargets.insert(target)
+            }
+        }
+
+        if testTargets.isEmpty {
+            testTargets = targetsFromSymbolReferences(
+                sourceFileCandidates: sourceFileCandidates,
+                packagePath: packagePath,
+                index: index
+            )
         }
 
         guard !testTargets.isEmpty else {
@@ -361,6 +391,51 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
 
         let targetName = components[testsIndex + 1]
         return targetName.isEmpty ? nil : targetName
+    }
+
+    private func targetsFromSymbolReferences(
+        sourceFileCandidates: [String],
+        packagePath: String,
+        index: IndexStoreDB
+    ) -> Set<String> {
+        let packagePrefix = packagePath.hasSuffix("/") ? packagePath : packagePath + "/"
+
+        var symbols = Set<String>()
+        for sourceFile in sourceFileCandidates {
+            for occurrence in index.symbolOccurrences(inFilePath: sourceFile) where
+                occurrence.roles.contains(.definition) || occurrence.roles.contains(.declaration)
+            {
+                symbols.insert(occurrence.symbol.usr)
+            }
+        }
+
+        guard !symbols.isEmpty else {
+            return []
+        }
+
+        var targets = Set<String>()
+        let referenceRoles: SymbolRole = [.reference, .call, .read, .write]
+        for usr in symbols {
+            let occurrences = index.occurrences(ofUSR: usr, roles: referenceRoles)
+            for occurrence in occurrences {
+                let candidatePath = standardizedPath(occurrence.location.path)
+                guard !sourceFileCandidates.contains(candidatePath) else {
+                    continue
+                }
+
+                if candidatePath.hasPrefix(packagePrefix),
+                   let target = testTargetName(for: candidatePath) {
+                    targets.insert(target)
+                    continue
+                }
+
+                if let target = testTargetName(for: candidatePath) {
+                    targets.insert(target)
+                }
+            }
+        }
+
+        return targets
     }
 
     private func discoverIndexStorePath(in packagePath: String) -> String? {
@@ -415,7 +490,9 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
     }
 
     private func packagePath(forSourceFile sourceFile: String) -> String? {
-        let sourceURL = URL(fileURLWithPath: sourceFile).standardizedFileURL
+        let sourceURL = URL(fileURLWithPath: sourceFile)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
         var current = sourceURL.deletingLastPathComponent()
 
         while current.path != "/" {
@@ -430,6 +507,23 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
     }
 
     private func standardizedPath(_ path: String) -> String {
-        (path as NSString).standardizingPath
+        URL(fileURLWithPath: path)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+    }
+
+    private func lookupPathCandidates(for sourceFile: String) -> [String] {
+        var candidates: [String] = []
+        let standardizedInput = (sourceFile as NSString).standardizingPath
+        let normalizedInput = standardizedPath(sourceFile)
+
+        for path in [normalizedInput, standardizedInput] where !path.isEmpty {
+            if !candidates.contains(path) {
+                candidates.append(path)
+            }
+        }
+
+        return candidates
     }
 }
