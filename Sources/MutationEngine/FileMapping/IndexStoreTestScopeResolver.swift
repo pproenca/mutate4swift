@@ -374,38 +374,29 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
             return target
         }
 
-        var mainFiles: [String] = []
-        for sourceFile in sourceFileCandidates {
-            mainFiles.append(
-                contentsOf: index.mainFilesContainingFile(path: sourceFile).map(normalizedPath)
-            )
-        }
-
-        if mainFiles.isEmpty {
-            mainFiles = sourceFileCandidates
-        }
-
-        let normalizedMainFiles = Array(Set(mainFiles)).sorted()
+        let normalizedMainFiles = normalizedMainFiles(
+            sourceFileCandidates: sourceFileCandidates,
+            index: index,
+            normalizedPath: normalizedPath
+        )
         let testOccurrences = index.unitTests(referencedByMainFiles: normalizedMainFiles)
 
-        var testTargets = Set<String>()
-        for occurrence in testOccurrences {
-            let testPath = normalizedPath(occurrence.location.path)
-            guard isPath(testPath, underAnyPrefix: packagePrefixes),
-                  let target = cachedTestTarget(for: testPath) else {
-                continue
-            }
-            testTargets.insert(target)
-        }
+        var testTargets = targetsFromOccurrences(
+            testOccurrences,
+            packagePrefixes: packagePrefixes,
+            normalizedPath: normalizedPath,
+            cachedTestTarget: cachedTestTarget,
+            requirePackagePrefix: true
+        )
 
         if testTargets.isEmpty {
-            for occurrence in testOccurrences {
-                let testPath = normalizedPath(occurrence.location.path)
-                guard let target = cachedTestTarget(for: testPath) else {
-                    continue
-                }
-                testTargets.insert(target)
-            }
+            testTargets = targetsFromOccurrences(
+                testOccurrences,
+                packagePrefixes: packagePrefixes,
+                normalizedPath: normalizedPath,
+                cachedTestTarget: cachedTestTarget,
+                requirePackagePrefix: false
+            )
         }
 
         if testTargets.isEmpty {
@@ -417,17 +408,7 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
             )
         }
 
-        guard !testTargets.isEmpty else {
-            return nil
-        }
-
-        let sortedTargets = testTargets.sorted()
-        if sortedTargets.count == 1 {
-            return sortedTargets[0]
-        }
-
-        let escapedTargets = sortedTargets.map(NSRegularExpression.escapedPattern(for:))
-        return "^(\(escapedTargets.joined(separator: "|")))\\."
+        return scopeFilterPattern(for: testTargets)
     }
 
     private func testTargetName(for testFilePath: String) -> String? {
@@ -472,6 +453,82 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
             return target
         }
 
+        let symbols = definedSymbolUSRs(
+            sourceFileCandidates: sourceFileCandidates,
+            index: index
+        )
+        guard !symbols.isEmpty else {
+            return []
+        }
+
+        return targetsFromSymbolReferences(
+            symbols: symbols,
+            sourceFileCandidateSet: sourceFileCandidateSet,
+            packagePrefixes: packagePrefixes,
+            index: index,
+            normalizedPath: normalizedPath,
+            cachedTestTarget: cachedTestTarget
+        )
+    }
+
+    private func normalizedMainFiles(
+        sourceFileCandidates: [String],
+        index: IndexStoreDB,
+        normalizedPath: (String) -> String
+    ) -> [String] {
+        var mainFiles: [String] = []
+        for sourceFile in sourceFileCandidates {
+            mainFiles.append(
+                contentsOf: index.mainFilesContainingFile(path: sourceFile).map(normalizedPath)
+            )
+        }
+
+        if mainFiles.isEmpty {
+            return sourceFileCandidates
+        }
+
+        return Array(Set(mainFiles)).sorted()
+    }
+
+    private func targetsFromOccurrences(
+        _ occurrences: [SymbolOccurrence],
+        packagePrefixes: [String],
+        normalizedPath: (String) -> String,
+        cachedTestTarget: (String) -> String?,
+        requirePackagePrefix: Bool
+    ) -> Set<String> {
+        var testTargets = Set<String>()
+        for occurrence in occurrences {
+            let testPath = normalizedPath(occurrence.location.path)
+            if requirePackagePrefix && !isPath(testPath, underAnyPrefix: packagePrefixes) {
+                continue
+            }
+            guard let target = cachedTestTarget(testPath) else {
+                continue
+            }
+            testTargets.insert(target)
+        }
+        return testTargets
+    }
+
+    private func scopeFilterPattern(for testTargets: Set<String>) -> String? {
+        guard !testTargets.isEmpty else {
+            return nil
+        }
+
+        let sortedTargets = testTargets.sorted()
+        if sortedTargets.count == 1 {
+            return sortedTargets[0]
+        }
+
+        let escapedTargets = sortedTargets.map(NSRegularExpression.escapedPattern(for:))
+        return "^(\(escapedTargets.joined(separator: "|")))\\."
+    }
+
+    private func definedSymbolUSRs(
+        sourceFileCandidates: [String],
+        index: IndexStoreDB
+    ) -> Set<String> {
         var symbols = Set<String>()
         for sourceFile in sourceFileCandidates {
             for occurrence in index.symbolOccurrences(inFilePath: sourceFile) where
@@ -480,11 +537,17 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
                 symbols.insert(occurrence.symbol.usr)
             }
         }
+        return symbols
+    }
 
-        guard !symbols.isEmpty else {
-            return []
-        }
-
+    private func targetsFromSymbolReferences(
+        symbols: Set<String>,
+        sourceFileCandidateSet: Set<String>,
+        packagePrefixes: [String],
+        index: IndexStoreDB,
+        normalizedPath: (String) -> String,
+        cachedTestTarget: (String) -> String?
+    ) -> Set<String> {
         var targets = Set<String>()
         let referenceRoles: SymbolRole = [.reference, .call, .read, .write]
         for usr in symbols {
@@ -494,20 +557,30 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
                 guard !sourceFileCandidateSet.contains(candidatePath) else {
                     continue
                 }
-
-                if isPath(candidatePath, underAnyPrefix: packagePrefixes),
-                   let target = cachedTestTarget(for: candidatePath) {
-                    targets.insert(target)
+                guard let target = referencedTestTarget(
+                    candidatePath: candidatePath,
+                    packagePrefixes: packagePrefixes,
+                    cachedTestTarget: cachedTestTarget
+                ) else {
                     continue
                 }
-
-                if let target = cachedTestTarget(for: candidatePath) {
-                    targets.insert(target)
-                }
+                targets.insert(target)
             }
         }
-
         return targets
+    }
+
+    private func referencedTestTarget(
+        candidatePath: String,
+        packagePrefixes: [String],
+        cachedTestTarget: (String) -> String?
+    ) -> String? {
+        if isPath(candidatePath, underAnyPrefix: packagePrefixes),
+           let target = cachedTestTarget(candidatePath) {
+            return target
+        }
+
+        return cachedTestTarget(candidatePath)
     }
 
     private func discoverIndexStorePath(in packagePath: String) -> String? {
