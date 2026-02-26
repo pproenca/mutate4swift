@@ -205,75 +205,14 @@ struct Mutate4Swift: AsyncParsableCommand {
     }
 
     func validate() throws {
-        if all && sourceFile != nil {
-            throw ValidationError("Specify either <source-file> or --all, not both.")
-        }
-
-        if !all && sourceFile == nil {
-            throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
-        }
-
-        if all && lines != nil {
-            throw ValidationError("--lines can only be used with a single <source-file>.")
-        }
-
-        guard (0.0...1.0).contains(maxBuildErrorRatio) else {
-            throw ValidationError("--max-build-error-ratio must be in [0,1].")
-        }
-
-        guard jobs >= 1 else {
-            throw ValidationError("--jobs must be >= 1.")
-        }
-
-        guard timeoutRetries >= 0 else {
-            throw ValidationError("--timeout-retries must be >= 0.")
-        }
-
-        guard buildFirstSampleSize >= 1 else {
-            throw ValidationError("--build-first-sample-size must be >= 1.")
-        }
-
-        guard (0.0...1.0).contains(buildFirstErrorRatio) else {
-            throw ValidationError("--build-first-error-ratio must be in [0,1].")
-        }
-
-        if usesXcodeRunner {
-            if all {
-                throw ValidationError("--all is currently only supported in SwiftPM mode.")
-            }
-
-            if coverage {
-                throw ValidationError("--coverage is currently only supported in SwiftPM mode.")
-            }
-
-            if packagePath != nil {
-                throw ValidationError("--package-path/--project cannot be combined with Xcode runner options.")
-            }
-
-            if xcodeWorkspace != nil && xcodeProject != nil {
-                throw ValidationError("Specify either --xcode-workspace or --xcode-project, not both.")
-            }
-
-            if xcodeWorkspace == nil && xcodeProject == nil {
-                throw ValidationError("Xcode mode requires --xcode-workspace or --xcode-project.")
-            }
-
-            guard let scheme = xcodeScheme, !scheme.isEmpty else {
-                throw ValidationError("Xcode mode requires --xcode-scheme.")
-            }
-        }
+        try validateTargetSelection()
+        try validateNumericOptions()
+        try validateXcodeOptionsIfNeeded()
     }
 
     func run() async throws {
         let resolvedSource = try resolveSourceFile()
-        if !all {
-            guard let resolvedSource else {
-                throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
-            }
-            guard FileManager.default.fileExists(atPath: resolvedSource) else {
-                throw Mutate4SwiftError.sourceFileNotFound(resolvedSource)
-            }
-        }
+        try validateResolvedSourceForRun(resolvedSource)
 
         let progressReporter = ProgressReporter(enabled: !noProgress)
         let modeLabel = strategyReport ? "plan" : (all ? "repository-run" : "single-run")
@@ -295,71 +234,23 @@ struct Mutate4Swift: AsyncParsableCommand {
         }
 
         do {
-            let executionRoot: String
-            let testRunner: TestRunner
-            let coverageProvider: CoverageProvider?
-
-            if usesXcodeRunner {
-                let xcode = try resolveXcodeInvocation()
-                executionRoot = xcode.rootPath
-                testRunner = XcodeTestRunner(invocation: xcode.invocation, verbose: verbose)
-                coverageProvider = nil
-                progressReporter.stage("resolved Xcode invocation (root: \(executionRoot))")
-            } else {
-                let resolvedPackage = try resolvePackagePath(startingFrom: resolvedSource)
-                executionRoot = resolvedPackage
-                testRunner = SPMTestRunner(verbose: verbose)
-                coverageProvider = coverage ? SPMCoverageProvider(verbose: verbose) : nil
-                progressReporter.stage("resolved SwiftPM package root: \(executionRoot)")
-            }
-
-            if requireCleanWorkingTree {
-                progressReporter.stage("checking git working tree state")
-                if isGitWorkingTreeClean(at: executionRoot) {
-                    scorecard.workspaceSafetyGate = .passed("Git working tree is clean")
-                } else {
-                    scorecard.workspaceSafetyGate = .failed("Git working tree is dirty")
-                    throw Mutate4SwiftError.workingTreeDirty(executionRoot)
-                }
-            }
+            let runContext = try resolveRunContext(
+                resolvedSource: resolvedSource,
+                progressReporter: progressReporter
+            )
+            try validateWorkingTreeIfNeeded(
+                executionRoot: runContext.executionRoot,
+                progressReporter: progressReporter,
+                scorecard: &scorecard
+            )
 
             if strategyReport {
-                let sourceFilesForPlan: [String]
-                if all {
-                    let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
-                    if sourceFiles.isEmpty {
-                        throw Mutate4SwiftError.invalidSourceFile(
-                            "No Swift source files found under \(executionRoot)/Sources"
-                        )
-                    }
-                    sourceFilesForPlan = sourceFiles
-                } else {
-                    guard let resolvedSource else {
-                        throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
-                    }
-                    sourceFilesForPlan = [resolvedSource]
-                }
-
-                let planner = MutationStrategyPlanner(coverageProvider: coverageProvider)
-                progressReporter.stage(
-                    "building strategy plan for \(sourceFilesForPlan.count) file(s) with \(jobs) worker(s)"
+                let plan = try await buildAndPrintStrategyPlan(
+                    resolvedSource: resolvedSource,
+                    executionRoot: runContext.executionRoot,
+                    coverageProvider: runContext.coverageProvider,
+                    progressReporter: progressReporter
                 )
-                let plan = try await planner.buildPlan(
-                    sourceFiles: sourceFilesForPlan,
-                    packagePath: executionRoot,
-                    testFilterOverride: testFilter,
-                    jobs: jobs
-                )
-                progressReporter.stage(
-                    "strategy plan complete: \(plan.totalCandidateMutations) candidate mutation(s) across \(plan.jobsPlanned) worker bucket(s)"
-                )
-
-                if json {
-                    print(StrategyReporter.jsonReport(for: plan))
-                } else {
-                    print(StrategyReporter.textReport(for: plan))
-                }
-
                 scorecard.baselineGate = .skipped("Strategy-only run")
                 scorecard.noTestsGate = .skipped("Strategy-only run")
                 scorecard.buildErrorBudgetGate = .skipped("Strategy-only run")
@@ -370,128 +261,14 @@ struct Mutate4Swift: AsyncParsableCommand {
                 return
             }
 
-            var processedSourceFiles: [String] = []
-            var totalMutations = 0
-            var totalBuildErrors = 0
-            var totalSurvivors = 0
+            let totals = try await executeMutationRun(
+                resolvedSource: resolvedSource,
+                runContext: runContext,
+                progressReporter: progressReporter,
+                scorecard: &scorecard
+            )
 
-            if all {
-                progressReporter.stage("starting repository mutation run")
-                let batch = try await runRepositoryMutationBatch(
-                    executionRoot: executionRoot,
-                    testRunner: testRunner,
-                    coverageProvider: coverageProvider,
-                    progressReporter: progressReporter
-                )
-                let reports = batch.reports
-                processedSourceFiles = batch.processedSourceFiles
-                totalMutations = batch.totalMutations
-                totalBuildErrors = batch.totalBuildErrors
-                totalSurvivors = batch.totalSurvivors
-                progressReporter.stage(
-                    "repository mutation run complete: files \(batch.processedSourceFiles.count), mutations \(batch.totalMutations), survivors \(batch.totalSurvivors), build errors \(batch.totalBuildErrors)"
-                )
-
-                let repositoryReport = RepositoryMutationReport(
-                    packagePath: executionRoot,
-                    fileReports: reports
-                )
-
-                if json {
-                    let reporter = JSONReporter()
-                    print(reporter.report(repositoryReport))
-                } else {
-                    let reporter = TextReporter()
-                    print(reporter.report(repositoryReport))
-                }
-
-                if batch.processedSourceFiles.count <= 1 {
-                    scorecard.scaleEfficiencyGate = .skipped("Single-file batch")
-                } else {
-                    scorecard.scaleEfficiencyGate = .passed(
-                        "Workers: \(batch.jobsUsed), baseline runs: \(batch.baselineExecutions), unique scopes: \(batch.baselineScopeCount), queue steals: \(batch.queueSteals), files: \(batch.processedSourceFiles.count)"
-                    )
-                }
-            } else {
-                guard let resolvedSource else {
-                    throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
-                }
-
-                progressReporter.stage("starting mutation run for \(resolvedSource)")
-                let lineSet = parseLines()
-                let orchestrator = Orchestrator(
-                    testRunner: testRunner,
-                    coverageProvider: coverageProvider,
-                    verbose: verbose,
-                    timeoutMultiplier: timeoutMultiplier,
-                    timeoutRetries: timeoutRetries,
-                    buildFirstSampleSize: buildFirstSampleSize,
-                    buildFirstErrorRatio: buildFirstErrorRatio,
-                    progressHandler: Self.makeProgressHandler(
-                        reporter: progressReporter,
-                        context: resolvedSource
-                    )
-                )
-                let resolvedSingleFileFilter: String? = if usesXcodeRunner {
-                    testFilter
-                } else if let testFilter {
-                    testFilter
-                } else {
-                    await TestFileMapper().testFilterAsync(forSourceFile: resolvedSource)
-                }
-                let report: MutationReport
-                if usesXcodeRunner {
-                    report = try orchestrator.run(
-                        sourceFile: resolvedSource,
-                        packagePath: executionRoot,
-                        testFilter: resolvedSingleFileFilter,
-                        lines: lineSet
-                    )
-                } else {
-                    let workspaceRoot = try Self.prepareMutationRunDirectory(
-                        in: executionRoot,
-                        prefix: "single"
-                    )
-                    defer { try? FileManager.default.removeItem(at: workspaceRoot) }
-                    try Self.createWorkerPackageCopy(from: executionRoot, to: workspaceRoot.path)
-
-                    let workspaceSource = try Self.remapSourceFile(
-                        resolvedSource,
-                        fromExecutionRoot: executionRoot,
-                        toWorkerRoot: workspaceRoot.path
-                    )
-                    let workspaceReport = try orchestrator.run(
-                        sourceFile: workspaceSource,
-                        packagePath: workspaceRoot.path,
-                        testFilter: resolvedSingleFileFilter,
-                        lines: lineSet,
-                        resolvedTestFilter: resolvedSingleFileFilter
-                    )
-                    report = MutationReport(
-                        results: workspaceReport.results,
-                        sourceFile: resolvedSource,
-                        baselineDuration: workspaceReport.baselineDuration
-                    )
-                }
-
-                processedSourceFiles = [resolvedSource]
-                totalMutations = report.totalMutations
-                totalBuildErrors = report.buildErrors
-                totalSurvivors = report.survived
-                progressReporter.stage(
-                    "completed \(resolvedSource): mutations \(report.totalMutations), survivors \(report.survived), build errors \(report.buildErrors)"
-                )
-
-                if json {
-                    let reporter = JSONReporter()
-                    print(reporter.report(report))
-                } else {
-                    let reporter = TextReporter()
-                    print(reporter.report(report))
-                }
-            }
-
-            if totalMutations > 0 {
+            if totals.totalMutations > 0 {
                 scorecard.baselineGate = .passed("Baseline tests passed")
                 scorecard.noTestsGate = .passed("At least one test executed per baseline scope")
             } else {
@@ -499,15 +276,15 @@ struct Mutate4Swift: AsyncParsableCommand {
                 scorecard.noTestsGate = .skipped("No mutation sites discovered")
             }
 
-            if let staleBackupPath = firstStaleBackupPath(for: processedSourceFiles) {
+            if let staleBackupPath = firstStaleBackupPath(for: totals.processedSourceFiles) {
                 scorecard.restoreGuaranteeGate = .failed("Stale backup remains: \(staleBackupPath)")
                 throw Mutate4SwiftError.backupRestoreFailed(staleBackupPath)
             }
             scorecard.restoreGuaranteeGate = .passed("No backup artifacts remain")
 
             let budget = evaluateBuildErrorBudget(
-                totalMutations: totalMutations,
-                buildErrors: totalBuildErrors
+                totalMutations: totals.totalMutations,
+                buildErrors: totals.totalBuildErrors
             )
             scorecard.buildErrorBudgetGate = budget.status
             if budget.exceeded {
@@ -517,7 +294,7 @@ struct Mutate4Swift: AsyncParsableCommand {
                 )
             }
 
-            if totalSurvivors > 0 {
+            if totals.totalSurvivors > 0 {
                 throw ExitCode(1)
             }
             progressReporter.stage("run completed")
@@ -526,6 +303,339 @@ struct Mutate4Swift: AsyncParsableCommand {
             progressReporter.stage("run failed: \(error)")
             throw error
         }
+    }
+
+    private struct RunContext {
+        let executionRoot: String
+        let testRunner: TestRunner
+        let coverageProvider: CoverageProvider?
+    }
+
+    private struct RunTotals {
+        let processedSourceFiles: [String]
+        let totalMutations: Int
+        let totalBuildErrors: Int
+        let totalSurvivors: Int
+    }
+
+    private func validateTargetSelection() throws {
+        if all && sourceFile != nil {
+            throw ValidationError("Specify either <source-file> or --all, not both.")
+        }
+
+        if !all && sourceFile == nil {
+            throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
+        }
+
+        if all && lines != nil {
+            throw ValidationError("--lines can only be used with a single <source-file>.")
+        }
+    }
+
+    private func validateNumericOptions() throws {
+        guard (0.0...1.0).contains(maxBuildErrorRatio) else {
+            throw ValidationError("--max-build-error-ratio must be in [0,1].")
+        }
+
+        guard jobs >= 1 else {
+            throw ValidationError("--jobs must be >= 1.")
+        }
+
+        guard timeoutRetries >= 0 else {
+            throw ValidationError("--timeout-retries must be >= 0.")
+        }
+
+        guard buildFirstSampleSize >= 1 else {
+            throw ValidationError("--build-first-sample-size must be >= 1.")
+        }
+
+        guard (0.0...1.0).contains(buildFirstErrorRatio) else {
+            throw ValidationError("--build-first-error-ratio must be in [0,1].")
+        }
+    }
+
+    private func validateXcodeOptionsIfNeeded() throws {
+        guard usesXcodeRunner else {
+            return
+        }
+
+        if all {
+            throw ValidationError("--all is currently only supported in SwiftPM mode.")
+        }
+
+        if coverage {
+            throw ValidationError("--coverage is currently only supported in SwiftPM mode.")
+        }
+
+        if packagePath != nil {
+            throw ValidationError("--package-path/--project cannot be combined with Xcode runner options.")
+        }
+
+        if xcodeWorkspace != nil && xcodeProject != nil {
+            throw ValidationError("Specify either --xcode-workspace or --xcode-project, not both.")
+        }
+
+        if xcodeWorkspace == nil && xcodeProject == nil {
+            throw ValidationError("Xcode mode requires --xcode-workspace or --xcode-project.")
+        }
+
+        guard let scheme = xcodeScheme, !scheme.isEmpty else {
+            throw ValidationError("Xcode mode requires --xcode-scheme.")
+        }
+    }
+
+    private func validateResolvedSourceForRun(_ resolvedSource: String?) throws {
+        guard !all else {
+            return
+        }
+        guard let resolvedSource else {
+            throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
+        }
+        guard FileManager.default.fileExists(atPath: resolvedSource) else {
+            throw Mutate4SwiftError.sourceFileNotFound(resolvedSource)
+        }
+    }
+
+    private func resolveRunContext(
+        resolvedSource: String?,
+        progressReporter: ProgressReporter
+    ) throws -> RunContext {
+        if usesXcodeRunner {
+            let xcode = try resolveXcodeInvocation()
+            progressReporter.stage("resolved Xcode invocation (root: \(xcode.rootPath))")
+            return RunContext(
+                executionRoot: xcode.rootPath,
+                testRunner: XcodeTestRunner(invocation: xcode.invocation, verbose: verbose),
+                coverageProvider: nil
+            )
+        }
+
+        let resolvedPackage = try resolvePackagePath(startingFrom: resolvedSource)
+        progressReporter.stage("resolved SwiftPM package root: \(resolvedPackage)")
+        return RunContext(
+            executionRoot: resolvedPackage,
+            testRunner: SPMTestRunner(verbose: verbose),
+            coverageProvider: coverage ? SPMCoverageProvider(verbose: verbose) : nil
+        )
+    }
+
+    private func validateWorkingTreeIfNeeded(
+        executionRoot: String,
+        progressReporter: ProgressReporter,
+        scorecard: inout ReadinessScorecard
+    ) throws {
+        guard requireCleanWorkingTree else {
+            return
+        }
+
+        progressReporter.stage("checking git working tree state")
+        if isGitWorkingTreeClean(at: executionRoot) {
+            scorecard.workspaceSafetyGate = .passed("Git working tree is clean")
+            return
+        }
+
+        scorecard.workspaceSafetyGate = .failed("Git working tree is dirty")
+        throw Mutate4SwiftError.workingTreeDirty(executionRoot)
+    }
+
+    private func buildAndPrintStrategyPlan(
+        resolvedSource: String?,
+        executionRoot: String,
+        coverageProvider: CoverageProvider?,
+        progressReporter: ProgressReporter
+    ) async throws -> MutationStrategyPlan {
+        let sourceFilesForPlan: [String]
+        if all {
+            let sourceFiles = try SourceFileDiscoverer().discoverSourceFiles(in: executionRoot)
+            if sourceFiles.isEmpty {
+                throw Mutate4SwiftError.invalidSourceFile(
+                    "No Swift source files found under \(executionRoot)/Sources"
+                )
+            }
+            sourceFilesForPlan = sourceFiles
+        } else {
+            guard let resolvedSource else {
+                throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
+            }
+            sourceFilesForPlan = [resolvedSource]
+        }
+
+        let planner = MutationStrategyPlanner(coverageProvider: coverageProvider)
+        progressReporter.stage(
+            "building strategy plan for \(sourceFilesForPlan.count) file(s) with \(jobs) worker(s)"
+        )
+        let plan = try await planner.buildPlan(
+            sourceFiles: sourceFilesForPlan,
+            packagePath: executionRoot,
+            testFilterOverride: testFilter,
+            jobs: jobs
+        )
+        progressReporter.stage(
+            "strategy plan complete: \(plan.totalCandidateMutations) candidate mutation(s) across \(plan.jobsPlanned) worker bucket(s)"
+        )
+
+        if json {
+            print(StrategyReporter.jsonReport(for: plan))
+        } else {
+            print(StrategyReporter.textReport(for: plan))
+        }
+
+        return plan
+    }
+
+    private func executeMutationRun(
+        resolvedSource: String?,
+        runContext: RunContext,
+        progressReporter: ProgressReporter,
+        scorecard: inout ReadinessScorecard
+    ) async throws -> RunTotals {
+        if all {
+            let batch = try await executeRepositoryMutationRun(
+                executionRoot: runContext.executionRoot,
+                testRunner: runContext.testRunner,
+                coverageProvider: runContext.coverageProvider,
+                progressReporter: progressReporter
+            )
+            if batch.processedSourceFiles.count <= 1 {
+                scorecard.scaleEfficiencyGate = .skipped("Single-file batch")
+            } else {
+                scorecard.scaleEfficiencyGate = .passed(
+                    "Workers: \(batch.jobsUsed), baseline runs: \(batch.baselineExecutions), unique scopes: \(batch.baselineScopeCount), queue steals: \(batch.queueSteals), files: \(batch.processedSourceFiles.count)"
+                )
+            }
+            return RunTotals(
+                processedSourceFiles: batch.processedSourceFiles,
+                totalMutations: batch.totalMutations,
+                totalBuildErrors: batch.totalBuildErrors,
+                totalSurvivors: batch.totalSurvivors
+            )
+        }
+
+        guard let resolvedSource else {
+            throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
+        }
+
+        let report = try await executeSingleFileMutationRun(
+            resolvedSource: resolvedSource,
+            runContext: runContext,
+            progressReporter: progressReporter
+        )
+        return RunTotals(
+            processedSourceFiles: [resolvedSource],
+            totalMutations: report.totalMutations,
+            totalBuildErrors: report.buildErrors,
+            totalSurvivors: report.survived
+        )
+    }
+
+    private func executeRepositoryMutationRun(
+        executionRoot: String,
+        testRunner: TestRunner,
+        coverageProvider: CoverageProvider?,
+        progressReporter: ProgressReporter
+    ) async throws -> RepositoryBatchResult {
+        progressReporter.stage("starting repository mutation run")
+        let batch = try await runRepositoryMutationBatch(
+            executionRoot: executionRoot,
+            testRunner: testRunner,
+            coverageProvider: coverageProvider,
+            progressReporter: progressReporter
+        )
+        progressReporter.stage(
+            "repository mutation run complete: files \(batch.processedSourceFiles.count), mutations \(batch.totalMutations), survivors \(batch.totalSurvivors), build errors \(batch.totalBuildErrors)"
+        )
+
+        let repositoryReport = RepositoryMutationReport(
+            packagePath: executionRoot,
+            fileReports: batch.reports
+        )
+        if json {
+            let reporter = JSONReporter()
+            print(reporter.report(repositoryReport))
+        } else {
+            let reporter = TextReporter()
+            print(reporter.report(repositoryReport))
+        }
+
+        return batch
+    }
+
+    private func executeSingleFileMutationRun(
+        resolvedSource: String,
+        runContext: RunContext,
+        progressReporter: ProgressReporter
+    ) async throws -> MutationReport {
+        progressReporter.stage("starting mutation run for \(resolvedSource)")
+        let lineSet = parseLines()
+        let orchestrator = Orchestrator(
+            testRunner: runContext.testRunner,
+            coverageProvider: runContext.coverageProvider,
+            verbose: verbose,
+            timeoutMultiplier: timeoutMultiplier,
+            timeoutRetries: timeoutRetries,
+            buildFirstSampleSize: buildFirstSampleSize,
+            buildFirstErrorRatio: buildFirstErrorRatio,
+            progressHandler: Self.makeProgressHandler(
+                reporter: progressReporter,
+                context: resolvedSource
+            )
+        )
+
+        let resolvedSingleFileFilter: String? = if usesXcodeRunner {
+            testFilter
+        } else if let testFilter {
+            testFilter
+        } else {
+            await TestFileMapper().testFilterAsync(forSourceFile: resolvedSource)
+        }
+
+        let report: MutationReport
+        if usesXcodeRunner {
+            report = try orchestrator.run(
+                sourceFile: resolvedSource,
+                packagePath: runContext.executionRoot,
+                testFilter: resolvedSingleFileFilter,
+                lines: lineSet
+            )
+        } else {
+            let workspaceRoot = try Self.prepareMutationRunDirectory(
+                in: runContext.executionRoot,
+                prefix: "single"
+            )
+            defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+            try Self.createWorkerPackageCopy(from: runContext.executionRoot, to: workspaceRoot.path)
+
+            let workspaceSource = try Self.remapSourceFile(
+                resolvedSource,
+                fromExecutionRoot: runContext.executionRoot,
+                toWorkerRoot: workspaceRoot.path
+            )
+            let workspaceReport = try orchestrator.run(
+                sourceFile: workspaceSource,
+                packagePath: workspaceRoot.path,
+                testFilter: resolvedSingleFileFilter,
+                lines: lineSet,
+                resolvedTestFilter: resolvedSingleFileFilter
+            )
+            report = MutationReport(
+                results: workspaceReport.results,
+                sourceFile: resolvedSource,
+                baselineDuration: workspaceReport.baselineDuration
+            )
+        }
+
+        progressReporter.stage(
+            "completed \(resolvedSource): mutations \(report.totalMutations), survivors \(report.survived), build errors \(report.buildErrors)"
+        )
+        if json {
+            let reporter = JSONReporter()
+            print(reporter.report(report))
+        } else {
+            let reporter = TextReporter()
+            print(reporter.report(report))
+        }
+
+        return report
     }
 
     private struct OrchestratorConfig: Sendable {
@@ -1194,48 +1304,15 @@ struct Mutate4Swift: AsyncParsableCommand {
     private func resolveSourceFile() throws -> String? {
         guard let sourceFile else { return nil }
         let resolved = resolvePath(sourceFile)
-        if FileManager.default.fileExists(atPath: resolved) {
+        if FileManager.default.fileExists(atPath: resolved) || sourceFile.hasPrefix("/") {
             return resolved
         }
 
-        if sourceFile.hasPrefix("/") {
+        guard let sourceFiles = discoverSourceFilesForResolution() else {
             return resolved
         }
 
-        guard let packageRoot = try? resolvePackagePath(startingFrom: nil),
-              let sourceFiles = try? SourceFileDiscoverer().discoverSourceFiles(in: packageRoot),
-              !sourceFiles.isEmpty else {
-            return resolved
-        }
-
-        let hasPathSeparators = sourceFile.contains("/")
-        let rawQuery = sourceFile.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedQuery = URL(
-            fileURLWithPath: rawQuery,
-            relativeTo: URL(fileURLWithPath: "/", isDirectory: true)
-        )
-        .standardizedFileURL
-        .path
-        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let matchSuffixes: [String]
-        if hasPathSeparators {
-            var suffixes = [normalizedQuery]
-            if normalizedQuery.hasPrefix("Sources/") {
-                suffixes.append(String(normalizedQuery.dropFirst("Sources/".count)))
-            }
-            matchSuffixes = suffixes.filter { !$0.isEmpty }
-        } else {
-            matchSuffixes = []
-        }
-
-        let matches = sourceFiles.filter { path in
-            if hasPathSeparators {
-                return matchSuffixes.contains { suffix in
-                    path.hasSuffix("/" + suffix) || path == suffix
-                }
-            }
-            return URL(fileURLWithPath: path).lastPathComponent == rawQuery
-        }.sorted()
+        let matches = matchingSourceFiles(query: sourceFile, in: sourceFiles)
 
         if matches.count == 1 {
             return matches[0]
@@ -1249,6 +1326,49 @@ struct Mutate4Swift: AsyncParsableCommand {
         }
 
         return resolved
+    }
+
+    private func discoverSourceFilesForResolution() -> [String]? {
+        guard let packageRoot = try? resolvePackagePath(startingFrom: nil),
+              let sourceFiles = try? SourceFileDiscoverer().discoverSourceFiles(in: packageRoot),
+              !sourceFiles.isEmpty else {
+            return nil
+        }
+        return sourceFiles
+    }
+
+    private func matchingSourceFiles(query sourceFile: String, in sourceFiles: [String]) -> [String] {
+        let rawQuery = sourceFile.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sourceFile.contains("/") {
+            let suffixes = sourceFileMatchSuffixes(for: rawQuery)
+            return sourceFiles.filter { path in
+                suffixes.contains { suffix in
+                    path.hasSuffix("/" + suffix) || path == suffix
+                }
+            }
+            .sorted()
+        }
+
+        return sourceFiles.filter { path in
+            URL(fileURLWithPath: path).lastPathComponent == rawQuery
+        }
+        .sorted()
+    }
+
+    private func sourceFileMatchSuffixes(for rawQuery: String) -> [String] {
+        let normalizedQuery = URL(
+            fileURLWithPath: rawQuery,
+            relativeTo: URL(fileURLWithPath: "/", isDirectory: true)
+        )
+        .standardizedFileURL
+        .path
+        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        var suffixes = [normalizedQuery]
+        if normalizedQuery.hasPrefix("Sources/") {
+            suffixes.append(String(normalizedQuery.dropFirst("Sources/".count)))
+        }
+        return suffixes.filter { !$0.isEmpty }
     }
 
     private func resolvePackagePath(startingFrom sourceFile: String?) throws -> String {
