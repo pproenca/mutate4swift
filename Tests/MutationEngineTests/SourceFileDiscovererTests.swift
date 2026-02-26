@@ -43,14 +43,33 @@ final class SourceFileDiscovererTests: XCTestCase {
             let main = packageRoot.appendingPathComponent("Sources/App/Core.swift")
             let generated = packageRoot.appendingPathComponent("Sources/App/Generated/Auto.swift")
             let vendor = packageRoot.appendingPathComponent("Sources/App/vendor/ThirdParty.swift")
+            let uppercaseVendor = packageRoot.appendingPathComponent("Sources/App/VENDOR/Upper.swift")
 
             try writeFile(at: main)
             try writeFile(at: generated)
             try writeFile(at: vendor)
+            try writeFile(at: uppercaseVendor)
 
             let files = try discoverer.discoverSourceFiles(in: packageRoot.path)
             XCTAssertEqual(files.count, 1)
             XCTAssertTrue(files[0].hasSuffix("Core.swift"))
+        }
+    }
+
+    func testDiscoverSourceFilesRecursesNestedDirectories() throws {
+        try withTemporaryDirectory { packageRoot in
+            let nested = packageRoot.appendingPathComponent(
+                "Sources/App/Features/Auth/LoginViewModel.swift"
+            )
+
+            try writeFile(at: nested)
+
+            let files = try discoverer.discoverSourceFiles(in: packageRoot.path)
+            XCTAssertEqual(files.count, 1)
+            XCTAssertEqual(
+                URL(fileURLWithPath: files[0]).resolvingSymlinksInPath().path,
+                nested.resolvingSymlinksInPath().path
+            )
         }
     }
 

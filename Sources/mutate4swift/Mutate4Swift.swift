@@ -253,7 +253,7 @@ struct Mutate4Swift: AsyncParsableCommand {
     }
 
     func run() async throws {
-        let resolvedSource = resolveSourceFile()
+        let resolvedSource = try resolveSourceFile()
         if !all {
             guard let resolvedSource else {
                 throw ValidationError("Missing <source-file>. Provide a file path or use --all.")
@@ -930,8 +930,14 @@ struct Mutate4Swift: AsyncParsableCommand {
         fromExecutionRoot executionRoot: String,
         toWorkerRoot workerRoot: String
     ) throws -> String {
-        let normalizedSource = URL(fileURLWithPath: sourceFile).standardizedFileURL.path
-        let normalizedRoot = URL(fileURLWithPath: executionRoot).standardizedFileURL.path
+        let normalizedSource = URL(fileURLWithPath: sourceFile)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        let normalizedRoot = URL(fileURLWithPath: executionRoot)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
 
         let rootPrefix = normalizedRoot + "/"
         guard normalizedSource.hasPrefix(rootPrefix) else {
@@ -1020,12 +1026,64 @@ struct Mutate4Swift: AsyncParsableCommand {
         }
     }
 
-    private func resolveSourceFile() -> String? {
+    private func resolveSourceFile() throws -> String? {
         guard let sourceFile else { return nil }
-        if sourceFile.hasPrefix("/") {
-            return sourceFile
+        let resolved = resolvePath(sourceFile)
+        if FileManager.default.fileExists(atPath: resolved) {
+            return resolved
         }
-        return FileManager.default.currentDirectoryPath + "/" + sourceFile
+
+        if sourceFile.hasPrefix("/") {
+            return resolved
+        }
+
+        guard let packageRoot = try? resolvePackagePath(startingFrom: nil),
+              let sourceFiles = try? SourceFileDiscoverer().discoverSourceFiles(in: packageRoot),
+              !sourceFiles.isEmpty else {
+            return resolved
+        }
+
+        let hasPathSeparators = sourceFile.contains("/")
+        let rawQuery = sourceFile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedQuery = URL(
+            fileURLWithPath: rawQuery,
+            relativeTo: URL(fileURLWithPath: "/", isDirectory: true)
+        )
+        .standardizedFileURL
+        .path
+        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let matchSuffixes: [String]
+        if hasPathSeparators {
+            var suffixes = [normalizedQuery]
+            if normalizedQuery.hasPrefix("Sources/") {
+                suffixes.append(String(normalizedQuery.dropFirst("Sources/".count)))
+            }
+            matchSuffixes = suffixes.filter { !$0.isEmpty }
+        } else {
+            matchSuffixes = []
+        }
+
+        let matches = sourceFiles.filter { path in
+            if hasPathSeparators {
+                return matchSuffixes.contains { suffix in
+                    path.hasSuffix("/" + suffix) || path == suffix
+                }
+            }
+            return URL(fileURLWithPath: path).lastPathComponent == rawQuery
+        }.sorted()
+
+        if matches.count == 1 {
+            return matches[0]
+        }
+
+        if matches.count > 1 {
+            let renderedMatches = matches.prefix(8).joined(separator: "\n  - ")
+            throw Mutate4SwiftError.invalidSourceFile(
+                "Ambiguous source file '\(sourceFile)'. Matches:\n  - \(renderedMatches)"
+            )
+        }
+
+        return resolved
     }
 
     private func resolvePackagePath(startingFrom sourceFile: String?) throws -> String {
@@ -1087,10 +1145,13 @@ struct Mutate4Swift: AsyncParsableCommand {
     }
 
     private func resolvePath(_ path: String) -> String {
-        if path.hasPrefix("/") {
-            return path
-        }
-        return FileManager.default.currentDirectoryPath + "/" + path
+        let currentDirectory = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        )
+        return URL(fileURLWithPath: path, relativeTo: currentDirectory)
+            .standardizedFileURL
+            .path
     }
 
     private func isGitWorkingTreeClean(at rootPath: String) -> Bool {

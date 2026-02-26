@@ -3,12 +3,10 @@ import Foundation
 /// Discovers Swift source files for repository-wide mutation runs.
 public struct SourceFileDiscoverer: Sendable {
     private static let excludedPathComponents: Set<String> = [
-        "Generated",
         "generated",
-        "Vendor",
         "vendor",
-        "Pods",
-        "Carthage",
+        "pods",
+        "carthage",
     ]
 
     public init() {}
@@ -24,11 +22,15 @@ public struct SourceFileDiscoverer: Sendable {
             throw Mutate4SwiftError.invalidSourceFile("Missing Sources directory at \(sourcesURL.path)")
         }
 
-        let enumerator = FileManager.default.enumerator(
+        guard let enumerator = FileManager.default.enumerator(
             at: sourcesURL,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
-        )!
+        ) else {
+            throw Mutate4SwiftError.invalidSourceFile(
+                "Unable to enumerate Sources directory at \(sourcesURL.path)"
+            )
+        }
 
         var files: [String] = []
         for case let fileURL as URL in enumerator {
@@ -41,7 +43,8 @@ public struct SourceFileDiscoverer: Sendable {
                 continue
             }
 
-            if !Set(fileURL.pathComponents).isDisjoint(with: Self.excludedPathComponents) {
+            let lowercasedComponents = Set(fileURL.pathComponents.map { $0.lowercased() })
+            if !lowercasedComponents.isDisjoint(with: Self.excludedPathComponents) {
                 continue
             }
 
