@@ -240,6 +240,46 @@ final class TestFileMapperTests: XCTestCase {
         }
     }
 
+    func testRefreshesIndexWhenSourceIsNewerThanIndexedUnit() throws {
+        try withTemporaryPackage { packageRoot in
+            let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")
+            let testFile = packageRoot.appendingPathComponent("Tests/MyLibTests/CalculatorTests.swift")
+
+            try writeFile(
+                at: sourceFile,
+                contents: """
+                public enum Calculator {
+                    public static func value() -> Int { 42 }
+                }
+                """
+            )
+            try writeFile(
+                at: testFile,
+                contents: """
+                import XCTest
+                @testable import MyLib
+
+                final class CalculatorTests: XCTestCase {
+                    func testValue() {
+                        XCTAssertEqual(Calculator.value(), 42)
+                    }
+                }
+                """
+            )
+
+            try runSwiftBuild(packageRoot: packageRoot)
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date().addingTimeInterval(5)],
+                ofItemAtPath: sourceFile.path
+            )
+
+            let resolver = IndexStoreTestScopeResolver()
+            let mapper = TestFileMapper(scopeResolver: resolver)
+            let filter = mapper.testFilter(forSourceFile: sourceFile.path)
+            XCTAssertEqual(filter, "MyLibTests")
+        }
+    }
+
     func testTestFileReturnsExpectedPathWhenTestFileExists() throws {
         try withTemporaryPackage { packageRoot in
             let sourceFile = packageRoot.appendingPathComponent("Sources/MyLib/Calculator.swift")

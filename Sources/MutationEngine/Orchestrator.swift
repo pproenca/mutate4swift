@@ -48,44 +48,15 @@ public final class Orchestrator: @unchecked Sendable {
         resolvedTestFilter: String? = nil
     ) throws -> MutationReport {
         let fileManager = SourceFileManager(filePath: sourceFile)
+        restoreStaleBackupIfNeeded(fileManager)
 
-        // Step 1: Recovery — restore stale backup if present
-        if fileManager.hasStaleBackup {
-            if verbose { print("Restoring stale backup from interrupted run...") }
-            fileManager.restoreIfNeeded()
-        }
-
-        // Step 2: Read and parse source
         let originalSource = try fileManager.backup()
-
-        // Step 3: Discover mutation sites
-        let discoverer = MutationDiscoverer(source: originalSource, fileName: sourceFile)
-        var sites = discoverer.discoverSites()
-
-        if verbose { print("Discovered \(sites.count) potential mutation sites") }
-
-        // Step 4: Filter equivalent mutations
-        let equivalentFilter = EquivalentMutationFilter()
-        sites = equivalentFilter.filter(sites, source: originalSource)
-
-        if verbose { print("After equivalent filter: \(sites.count) sites") }
-
-        // Step 5: Filter by lines (if specified)
-        if let lines = lines {
-            sites = sites.filter { lines.contains($0.line) }
-            if verbose { print("After line filter: \(sites.count) sites") }
-        }
-
-        // Step 6: Filter by coverage (if enabled)
-        if let coverageProvider = coverageProvider {
-            do {
-                let covered = try coverageProvider.coveredLines(forFile: sourceFile, packagePath: packagePath)
-                sites = sites.filter { covered.contains($0.line) }
-                if verbose { print("After coverage filter: \(sites.count) sites") }
-            } catch {
-                if verbose { print("Warning: Could not load coverage data: \(error)") }
-            }
-        }
+        let sites = discoverMutationSites(
+            sourceFile: sourceFile,
+            packagePath: packagePath,
+            originalSource: originalSource,
+            lines: lines
+        )
 
         progressHandler?(.candidateSitesDiscovered(count: sites.count))
 
@@ -102,34 +73,121 @@ public final class Orchestrator: @unchecked Sendable {
         // Step 7: Run baseline
         let autoFilter = resolvedTestFilter ?? testFilter ?? TestFileMapper().testFilter(forSourceFile: sourceFile)
         progressHandler?(.baselineStarted(filter: autoFilter))
-        let baseline: BaselineResult
-        if let baselineOverride {
-            baseline = baselineOverride
-            if verbose {
-                print("Using cached baseline (\(String(format: "%.2f", baseline.duration))s, timeout: \(String(format: "%.2f", baseline.timeout))s)")
-            }
-        } else if let baselineRunner = testRunner as? BaselineCapableTestRunner {
-            if verbose { print("Running baseline tests...") }
-            let rawBaseline = try baselineRunner.runBaseline(packagePath: packagePath, filter: autoFilter)
-            baseline = BaselineResult(duration: rawBaseline.duration, timeoutMultiplier: timeoutMultiplier)
-        } else {
-            if verbose { print("Running baseline tests...") }
-            let start = Date()
-            let result = try testRunner.runTests(packagePath: packagePath, filter: autoFilter, timeout: 600)
-            let duration = Date().timeIntervalSince(start)
-            guard result == .passed else {
-                if result == .noTests {
-                    throw Mutate4SwiftError.noTestsExecuted(autoFilter)
-                }
-                throw Mutate4SwiftError.baselineTestsFailed
-            }
-            baseline = BaselineResult(duration: duration, timeoutMultiplier: timeoutMultiplier)
-        }
+        let baseline = try resolveBaseline(
+            packagePath: packagePath,
+            filter: autoFilter,
+            baselineOverride: baselineOverride
+        )
         progressHandler?(.baselineFinished(duration: baseline.duration, timeout: baseline.timeout))
 
         if verbose { print("Baseline passed in \(String(format: "%.2f", baseline.duration))s, timeout: \(String(format: "%.2f", baseline.timeout))s") }
 
         // Step 8: Mutation loop
+        let results = try runMutationLoop(
+            sites: sites,
+            originalSource: originalSource,
+            fileManager: fileManager,
+            packagePath: packagePath,
+            filter: autoFilter,
+            timeout: baseline.timeout
+        )
+
+        // Step 9: Restore original
+        try fileManager.restore()
+
+        return MutationReport(
+            results: results,
+            sourceFile: sourceFile,
+            baselineDuration: baseline.duration
+        )
+    }
+
+    private func restoreStaleBackupIfNeeded(_ fileManager: SourceFileManager) {
+        guard fileManager.hasStaleBackup else {
+            return
+        }
+
+        if verbose {
+            print("Restoring stale backup from interrupted run...")
+        }
+        fileManager.restoreIfNeeded()
+    }
+
+    private func discoverMutationSites(
+        sourceFile: String,
+        packagePath: String,
+        originalSource: String,
+        lines: Set<Int>?
+    ) -> [MutationSite] {
+        let discoverer = MutationDiscoverer(source: originalSource, fileName: sourceFile)
+        var sites = discoverer.discoverSites()
+
+        if verbose { print("Discovered \(sites.count) potential mutation sites") }
+
+        let equivalentFilter = EquivalentMutationFilter()
+        sites = equivalentFilter.filter(sites, source: originalSource)
+
+        if verbose { print("After equivalent filter: \(sites.count) sites") }
+
+        if let lines {
+            sites = sites.filter { lines.contains($0.line) }
+            if verbose { print("After line filter: \(sites.count) sites") }
+        }
+
+        guard let coverageProvider else {
+            return sites
+        }
+
+        do {
+            let covered = try coverageProvider.coveredLines(forFile: sourceFile, packagePath: packagePath)
+            sites = sites.filter { covered.contains($0.line) }
+            if verbose { print("After coverage filter: \(sites.count) sites") }
+        } catch {
+            if verbose { print("Warning: Could not load coverage data: \(error)") }
+        }
+
+        return sites
+    }
+
+    private func resolveBaseline(
+        packagePath: String,
+        filter: String?,
+        baselineOverride: BaselineResult?
+    ) throws -> BaselineResult {
+        if let baselineOverride {
+            if verbose {
+                print("Using cached baseline (\(String(format: "%.2f", baselineOverride.duration))s, timeout: \(String(format: "%.2f", baselineOverride.timeout))s)")
+            }
+            return baselineOverride
+        }
+
+        if verbose { print("Running baseline tests...") }
+
+        if let baselineRunner = testRunner as? BaselineCapableTestRunner {
+            let rawBaseline = try baselineRunner.runBaseline(packagePath: packagePath, filter: filter)
+            return BaselineResult(duration: rawBaseline.duration, timeoutMultiplier: timeoutMultiplier)
+        }
+
+        let start = Date()
+        let result = try testRunner.runTests(packagePath: packagePath, filter: filter, timeout: 600)
+        let duration = Date().timeIntervalSince(start)
+        guard result == .passed else {
+            if result == .noTests {
+                throw Mutate4SwiftError.noTestsExecuted(filter)
+            }
+            throw Mutate4SwiftError.baselineTestsFailed
+        }
+        return BaselineResult(duration: duration, timeoutMultiplier: timeoutMultiplier)
+    }
+
+    private func runMutationLoop(
+        sites: [MutationSite],
+        originalSource: String,
+        fileManager: SourceFileManager,
+        packagePath: String,
+        filter: String?,
+        timeout: TimeInterval
+    ) throws -> [MutationResult] {
         let applicator = MutationApplicator()
         var results: [MutationResult] = []
         var processedMutations = 0
@@ -142,60 +200,17 @@ public final class Orchestrator: @unchecked Sendable {
                 print("[\(index + 1)/\(sites.count)] Testing \(site.mutationOperator.description): \"\(site.originalText)\" → \"\(site.mutatedText)\" (line \(site.line))")
             }
 
-            // Apply mutation
             let mutatedSource = applicator.apply(site, to: originalSource)
             try fileManager.writeMutated(mutatedSource)
 
-            // Run tests
-            let testResult: TestRunResult
-            if buildFirstModeEnabled, let splitRunner {
-                let buildResult = runWithTimeoutRetry {
-                    try splitRunner.runBuild(packagePath: packagePath, timeout: baseline.timeout)
-                }
-
-                switch buildResult {
-                case .passed:
-                    testResult = runWithTimeoutRetry {
-                        try splitRunner.runTestsWithoutBuild(
-                            packagePath: packagePath,
-                            filter: autoFilter,
-                            timeout: baseline.timeout
-                        )
-                    }
-                case .timeout:
-                    testResult = .timeout
-                case .buildError, .failed:
-                    testResult = .buildError
-                case .noTests:
-                    testResult = .buildError
-                }
-            } else {
-                testResult = runWithTimeoutRetry {
-                    try testRunner.runTests(
-                        packagePath: packagePath,
-                        filter: autoFilter,
-                        timeout: baseline.timeout
-                    )
-                }
-            }
-
-            // Classify
-            let outcome: MutationOutcome
-            switch testResult {
-            case .passed:
-                outcome = .survived
-            case .failed:
-                outcome = .killed
-            case .timeout:
-                outcome = .timeout
-            case .buildError:
-                outcome = .buildError
-            case .noTests:
-                if verbose {
-                    print("  → NO_TESTS (classifying as BUILD_ERROR)")
-                }
-                outcome = .buildError
-            }
+            let testResult = runMutationTests(
+                buildFirstModeEnabled: buildFirstModeEnabled,
+                splitRunner: splitRunner,
+                packagePath: packagePath,
+                filter: filter,
+                timeout: timeout
+            )
+            let outcome = classifyMutationOutcome(testResult)
 
             results.append(MutationResult(site: site, outcome: outcome))
             progressHandler?(
@@ -215,30 +230,95 @@ public final class Orchestrator: @unchecked Sendable {
             if outcome == .buildError {
                 buildErrorsSeen += 1
             }
+            buildFirstModeEnabled = updateBuildFirstMode(
+                current: buildFirstModeEnabled,
+                splitRunner: splitRunner,
+                processedMutations: processedMutations,
+                buildErrorsSeen: buildErrorsSeen
+            )
+        }
 
-            if !buildFirstModeEnabled,
-               splitRunner != nil,
-               processedMutations >= buildFirstSampleSize {
-                let ratio = Double(buildErrorsSeen) / Double(processedMutations)
-                if ratio >= buildFirstErrorRatio {
-                    buildFirstModeEnabled = true
-                    if verbose {
-                        print(
-                            "Enabling build-first mode (\(buildErrorsSeen)/\(processedMutations) build errors = \(String(format: "%.2f", ratio * 100))%)"
-                        )
-                    }
-                }
+        return results
+    }
+
+    private func runMutationTests(
+        buildFirstModeEnabled: Bool,
+        splitRunner: BuildSplitCapableTestRunner?,
+        packagePath: String,
+        filter: String?,
+        timeout: TimeInterval
+    ) -> TestRunResult {
+        guard buildFirstModeEnabled, let splitRunner else {
+            return runWithTimeoutRetry {
+                try testRunner.runTests(
+                    packagePath: packagePath,
+                    filter: filter,
+                    timeout: timeout
+                )
             }
         }
 
-        // Step 9: Restore original
-        try fileManager.restore()
+        let buildResult = runWithTimeoutRetry {
+            try splitRunner.runBuild(packagePath: packagePath, timeout: timeout)
+        }
 
-        return MutationReport(
-            results: results,
-            sourceFile: sourceFile,
-            baselineDuration: baseline.duration
-        )
+        switch buildResult {
+        case .passed:
+            return runWithTimeoutRetry {
+                try splitRunner.runTestsWithoutBuild(
+                    packagePath: packagePath,
+                    filter: filter,
+                    timeout: timeout
+                )
+            }
+        case .timeout:
+            return .timeout
+        case .buildError, .failed, .noTests:
+            return .buildError
+        }
+    }
+
+    private func classifyMutationOutcome(_ testResult: TestRunResult) -> MutationOutcome {
+        switch testResult {
+        case .passed:
+            return .survived
+        case .failed:
+            return .killed
+        case .timeout:
+            return .timeout
+        case .buildError:
+            return .buildError
+        case .noTests:
+            if verbose {
+                print("  → NO_TESTS (classifying as BUILD_ERROR)")
+            }
+            return .buildError
+        }
+    }
+
+    private func updateBuildFirstMode(
+        current: Bool,
+        splitRunner: BuildSplitCapableTestRunner?,
+        processedMutations: Int,
+        buildErrorsSeen: Int
+    ) -> Bool {
+        guard !current,
+              splitRunner != nil,
+              processedMutations >= buildFirstSampleSize else {
+            return current
+        }
+
+        let ratio = Double(buildErrorsSeen) / Double(processedMutations)
+        guard ratio >= buildFirstErrorRatio else {
+            return current
+        }
+
+        if verbose {
+            print(
+                "Enabling build-first mode (\(buildErrorsSeen)/\(processedMutations) build errors = \(String(format: "%.2f", ratio * 100))%)"
+            )
+        }
+        return true
     }
 
     private func runWithTimeoutRetry(action: () throws -> TestRunResult) -> TestRunResult {
