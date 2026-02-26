@@ -381,21 +381,18 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         )
         let testOccurrences = index.unitTests(referencedByMainFiles: normalizedMainFiles)
 
-        var testTargets = targetsFromOccurrences(
+        var testTargets = targetsFromOccurrencesWithinPackage(
             testOccurrences,
             packagePrefixes: packagePrefixes,
             normalizedPath: normalizedPath,
-            cachedTestTarget: cachedTestTarget,
-            requirePackagePrefix: true
+            cachedTestTarget: cachedTestTarget
         )
 
         if testTargets.isEmpty {
             testTargets = targetsFromOccurrences(
                 testOccurrences,
-                packagePrefixes: packagePrefixes,
                 normalizedPath: normalizedPath,
-                cachedTestTarget: cachedTestTarget,
-                requirePackagePrefix: false
+                cachedTestTarget: cachedTestTarget
             )
         }
 
@@ -490,19 +487,32 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         return Array(Set(mainFiles)).sorted()
     }
 
-    private func targetsFromOccurrences(
+    private func targetsFromOccurrencesWithinPackage(
         _ occurrences: [SymbolOccurrence],
         packagePrefixes: [String],
         normalizedPath: (String) -> String,
-        cachedTestTarget: (String) -> String?,
-        requirePackagePrefix: Bool
+        cachedTestTarget: (String) -> String?
     ) -> Set<String> {
         var testTargets = Set<String>()
         for occurrence in occurrences {
             let testPath = normalizedPath(occurrence.location.path)
-            if requirePackagePrefix && !isPath(testPath, underAnyPrefix: packagePrefixes) {
+            guard isPath(testPath, underAnyPrefix: packagePrefixes),
+                  let target = cachedTestTarget(testPath) else {
                 continue
             }
+            testTargets.insert(target)
+        }
+        return testTargets
+    }
+
+    private func targetsFromOccurrences(
+        _ occurrences: [SymbolOccurrence],
+        normalizedPath: (String) -> String,
+        cachedTestTarget: (String) -> String?
+    ) -> Set<String> {
+        var testTargets = Set<String>()
+        for occurrence in occurrences {
+            let testPath = normalizedPath(occurrence.location.path)
             guard let target = cachedTestTarget(testPath) else {
                 continue
             }

@@ -251,12 +251,10 @@ struct Mutate4Swift: AsyncParsableCommand {
                     coverageProvider: runContext.coverageProvider,
                     progressReporter: progressReporter
                 )
-                scorecard.baselineGate = .skipped("Strategy-only run")
-                scorecard.noTestsGate = .skipped("Strategy-only run")
-                scorecard.buildErrorBudgetGate = .skipped("Strategy-only run")
-                scorecard.restoreGuaranteeGate = .passed("No source mutation executed")
-                scorecard.scaleEfficiencyGate = .passed(
-                    "Planned \(plan.filesWithCandidateMutations) file(s) across \(plan.jobsPlanned) bucket(s)"
+                applyStrategyOnlyScorecard(
+                    scorecard: &scorecard,
+                    filesWithCandidateMutations: plan.filesWithCandidateMutations,
+                    jobsPlanned: plan.jobsPlanned
                 )
                 return
             }
@@ -268,36 +266,13 @@ struct Mutate4Swift: AsyncParsableCommand {
                 scorecard: &scorecard
             )
 
-            if totals.totalMutations > 0 {
-                scorecard.baselineGate = .passed("Baseline tests passed")
-                scorecard.noTestsGate = .passed("At least one test executed per baseline scope")
-            } else {
-                scorecard.baselineGate = .skipped("No mutation sites discovered")
-                scorecard.noTestsGate = .skipped("No mutation sites discovered")
-            }
-
-            if let staleBackupPath = firstStaleBackupPath(for: totals.processedSourceFiles) {
-                scorecard.restoreGuaranteeGate = .failed("Stale backup remains: \(staleBackupPath)")
-                throw Mutate4SwiftError.backupRestoreFailed(staleBackupPath)
-            }
-            scorecard.restoreGuaranteeGate = .passed("No backup artifacts remain")
-
-            let budget = evaluateBuildErrorBudget(
-                totalMutations: totals.totalMutations,
-                buildErrors: totals.totalBuildErrors
+            applyMutationExecutionScorecard(totals: totals, scorecard: &scorecard)
+            try validateBackupRestoreGuarantee(
+                processedSourceFiles: totals.processedSourceFiles,
+                scorecard: &scorecard
             )
-            scorecard.buildErrorBudgetGate = budget.status
-            if budget.exceeded {
-                throw Mutate4SwiftError.buildErrorRatioExceeded(
-                    actual: budget.actualRatio,
-                    limit: maxBuildErrorRatio
-                )
-            }
-
-            if totals.totalSurvivors > 0 {
-                throw ExitCode(1)
-            }
-            progressReporter.stage("run completed")
+            try enforceBuildErrorBudget(totals: totals, scorecard: &scorecard)
+            try finalizeRun(totals: totals, progressReporter: progressReporter)
         } catch {
             applyFailureToScorecard(scorecard: &scorecard, error: error)
             progressReporter.stage("run failed: \(error)")
@@ -316,6 +291,71 @@ struct Mutate4Swift: AsyncParsableCommand {
         let totalMutations: Int
         let totalBuildErrors: Int
         let totalSurvivors: Int
+    }
+
+    private func applyStrategyOnlyScorecard(
+        scorecard: inout ReadinessScorecard,
+        filesWithCandidateMutations: Int,
+        jobsPlanned: Int
+    ) {
+        scorecard.baselineGate = .skipped("Strategy-only run")
+        scorecard.noTestsGate = .skipped("Strategy-only run")
+        scorecard.buildErrorBudgetGate = .skipped("Strategy-only run")
+        scorecard.restoreGuaranteeGate = .passed("No source mutation executed")
+        scorecard.scaleEfficiencyGate = .passed(
+            "Planned \(filesWithCandidateMutations) file(s) across \(jobsPlanned) bucket(s)"
+        )
+    }
+
+    private func applyMutationExecutionScorecard(
+        totals: RunTotals,
+        scorecard: inout ReadinessScorecard
+    ) {
+        if totals.totalMutations > 0 {
+            scorecard.baselineGate = .passed("Baseline tests passed")
+            scorecard.noTestsGate = .passed("At least one test executed per baseline scope")
+        } else {
+            scorecard.baselineGate = .skipped("No mutation sites discovered")
+            scorecard.noTestsGate = .skipped("No mutation sites discovered")
+        }
+    }
+
+    private func validateBackupRestoreGuarantee(
+        processedSourceFiles: [String],
+        scorecard: inout ReadinessScorecard
+    ) throws {
+        if let staleBackupPath = firstStaleBackupPath(for: processedSourceFiles) {
+            scorecard.restoreGuaranteeGate = .failed("Stale backup remains: \(staleBackupPath)")
+            throw Mutate4SwiftError.backupRestoreFailed(staleBackupPath)
+        }
+        scorecard.restoreGuaranteeGate = .passed("No backup artifacts remain")
+    }
+
+    private func enforceBuildErrorBudget(
+        totals: RunTotals,
+        scorecard: inout ReadinessScorecard
+    ) throws {
+        let budget = evaluateBuildErrorBudget(
+            totalMutations: totals.totalMutations,
+            buildErrors: totals.totalBuildErrors
+        )
+        scorecard.buildErrorBudgetGate = budget.status
+        if budget.exceeded {
+            throw Mutate4SwiftError.buildErrorRatioExceeded(
+                actual: budget.actualRatio,
+                limit: maxBuildErrorRatio
+            )
+        }
+    }
+
+    private func finalizeRun(
+        totals: RunTotals,
+        progressReporter: ProgressReporter
+    ) throws {
+        if totals.totalSurvivors > 0 {
+            throw ExitCode(1)
+        }
+        progressReporter.stage("run completed")
     }
 
     private func validateTargetSelection() throws {
