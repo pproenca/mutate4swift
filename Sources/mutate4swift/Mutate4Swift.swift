@@ -4,6 +4,11 @@ import MutationEngine
 
 @main
 struct Mutate4Swift: AsyncParsableCommand {
+    enum SchedulerMode: String, CaseIterable, ExpressibleByArgument, Sendable {
+        case dynamic
+        case `static`
+    }
+
     static let configuration = CommandConfiguration(
         commandName: "mutate4swift",
         abstract: "Mutation testing for SwiftPM and Xcode projects",
@@ -136,6 +141,12 @@ struct Mutate4Swift: AsyncParsableCommand {
 
         @Option(name: .long, help: "Build-error ratio threshold to enable build-first mode in [0,1].")
         var buildFirstErrorRatio: Double = 0.5
+
+        @Option(
+            name: .long,
+            help: ArgumentHelp("Repository scheduler mode for --all runs.", valueName: "dynamic|static")
+        )
+        var scheduler: SchedulerMode = .dynamic
     }
 
     @OptionGroup(title: "Target")
@@ -181,6 +192,7 @@ struct Mutate4Swift: AsyncParsableCommand {
     private var timeoutRetries: Int { advanced.timeoutRetries }
     private var buildFirstSampleSize: Int { advanced.buildFirstSampleSize }
     private var buildFirstErrorRatio: Double { advanced.buildFirstErrorRatio }
+    private var scheduler: SchedulerMode { advanced.scheduler }
 
     private var usesXcodeRunner: Bool {
         xcodeWorkspace != nil
@@ -397,7 +409,7 @@ struct Mutate4Swift: AsyncParsableCommand {
                     scorecard.scaleEfficiencyGate = .skipped("Single-file batch")
                 } else {
                     scorecard.scaleEfficiencyGate = .passed(
-                        "Workers: \(batch.jobsUsed), baseline runs: \(batch.baselineExecutions), unique scopes: \(batch.baselineScopeCount), files: \(batch.processedSourceFiles.count)"
+                        "Workers: \(batch.jobsUsed), baseline runs: \(batch.baselineExecutions), unique scopes: \(batch.baselineScopeCount), queue steals: \(batch.queueSteals), files: \(batch.processedSourceFiles.count)"
                     )
                 }
             } else {
@@ -522,6 +534,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         let timeoutRetries: Int
         let buildFirstSampleSize: Int
         let buildFirstErrorRatio: Double
+        let scheduler: SchedulerMode
         let testFilterOverride: String?
         let coverageEnabled: Bool
         let progressReporter: ProgressReporter?
@@ -536,19 +549,22 @@ struct Mutate4Swift: AsyncParsableCommand {
         let baselineExecutions: Int
         let baselineScopeCount: Int
         let jobsUsed: Int
+        let queueSteals: Int
 
         init(
             reports: [MutationReport],
             processedSourceFiles: [String],
             baselineExecutions: Int,
             baselineScopeCount: Int,
-            jobsUsed: Int
+            jobsUsed: Int,
+            queueSteals: Int
         ) {
             self.reports = reports
             self.processedSourceFiles = processedSourceFiles
             self.baselineExecutions = baselineExecutions
             self.baselineScopeCount = baselineScopeCount
             self.jobsUsed = jobsUsed
+            self.queueSteals = queueSteals
 
             var totalMutations = 0
             var totalBuildErrors = 0
@@ -568,6 +584,7 @@ struct Mutate4Swift: AsyncParsableCommand {
     private struct WorkerBucketResult: Sendable {
         let reports: [MutationReport]
         let baselineExecutions: Int
+        let processedWorkloads: Int
     }
 
     private func orchestratorConfig(progressReporter: ProgressReporter?) -> OrchestratorConfig {
@@ -577,6 +594,7 @@ struct Mutate4Swift: AsyncParsableCommand {
             timeoutRetries: timeoutRetries,
             buildFirstSampleSize: buildFirstSampleSize,
             buildFirstErrorRatio: buildFirstErrorRatio,
+            scheduler: scheduler,
             testFilterOverride: testFilter,
             coverageEnabled: coverage,
             progressReporter: progressReporter
@@ -720,7 +738,8 @@ struct Mutate4Swift: AsyncParsableCommand {
             processedSourceFiles: sourceFiles,
             baselineExecutions: baselineExecutions,
             baselineScopeCount: baselineScopes.count,
-            jobsUsed: 1
+            jobsUsed: 1,
+            queueSteals: 0
         )
     }
 
@@ -730,7 +749,7 @@ struct Mutate4Swift: AsyncParsableCommand {
         config: OrchestratorConfig
     ) async throws -> RepositoryBatchResult {
         config.progressReporter?.stage(
-            "parallel plan: \(plan.workloads.count) file(s), \(plan.totalCandidateMutations) candidate mutation(s), \(plan.jobsPlanned) worker(s)"
+            "parallel plan: \(plan.workloads.count) file(s), \(plan.totalCandidateMutations) candidate mutation(s), \(plan.jobsPlanned) worker(s), scheduler \(config.scheduler.rawValue)"
         )
         let workerParent = try prepareMutationRunDirectory(
             in: executionRoot,
@@ -748,28 +767,67 @@ struct Mutate4Swift: AsyncParsableCommand {
                 )
             }
 
-        let candidateBuckets = plan.buckets.filter { !$0.workloads.isEmpty }
         var workerResults: [WorkerBucketResult] = []
-        workerResults.reserveCapacity(candidateBuckets.count)
+        workerResults.reserveCapacity(plan.jobsPlanned)
+        var queueSteals = 0
 
-        try await withThrowingTaskGroup(of: WorkerBucketResult.self) { group in
-            for bucket in candidateBuckets {
-                group.addTask {
-                    try executeBucket(
-                        bucket: bucket,
-                        executionRoot: executionRoot,
-                        workerParent: workerParent,
-                        config: config
+        switch config.scheduler {
+        case .dynamic:
+            let workQueue = MutationWorkQueue(plan: plan)
+            let seededWorkloadsByWorker = Dictionary(
+                uniqueKeysWithValues: plan.buckets.map { ($0.workerIndex, $0.workloads.count) }
+            )
+
+            try await withThrowingTaskGroup(of: WorkerBucketResult.self) { group in
+                for workerIndex in 0..<plan.jobsPlanned {
+                    let seededWorkloads = seededWorkloadsByWorker[workerIndex, default: 0]
+                    group.addTask {
+                        try await executeQueuedWorker(
+                            workerIndex: workerIndex,
+                            seededWorkloads: seededWorkloads,
+                            workQueue: workQueue,
+                            executionRoot: executionRoot,
+                            workerParent: workerParent,
+                            config: config
+                        )
+                    }
+                }
+
+                for try await result in group {
+                    workerResults.append(result)
+                    config.progressReporter?.stage(
+                        "completed worker (\(workerResults.count)/\(plan.jobsPlanned))"
                     )
                 }
             }
 
-            for try await result in group {
-                workerResults.append(result)
-                config.progressReporter?.stage(
-                    "completed worker bucket (\(workerResults.count)/\(candidateBuckets.count))"
-                )
+            let queueMetrics = await workQueue.metrics()
+            queueSteals = queueMetrics.stolenWorkloads
+            config.progressReporter?.stage(
+                "queue dispatch complete: dispatched \(queueMetrics.dispatchedWorkloads), steals \(queueMetrics.stolenWorkloads)"
+            )
+        case .static:
+            let candidateBuckets = plan.buckets.filter { !$0.workloads.isEmpty }
+            try await withThrowingTaskGroup(of: WorkerBucketResult.self) { group in
+                for bucket in candidateBuckets {
+                    group.addTask {
+                        try executeStaticBucket(
+                            bucket: bucket,
+                            executionRoot: executionRoot,
+                            workerParent: workerParent,
+                            config: config
+                        )
+                    }
+                }
+
+                for try await result in group {
+                    workerResults.append(result)
+                    config.progressReporter?.stage(
+                        "completed static bucket (\(workerResults.count)/\(candidateBuckets.count))"
+                    )
+                }
             }
+            config.progressReporter?.stage("static dispatch complete: buckets \(candidateBuckets.count)")
         }
 
         var reports = emptyReports
@@ -781,17 +839,19 @@ struct Mutate4Swift: AsyncParsableCommand {
         let baselineExecutions = workerResults.reduce(0) { $0 + $1.baselineExecutions }
         let baselineScopeCount = Set(plan.workloads.map(\.scopeKey)).count
         let processed = plan.workloads.map(\.sourceFile)
+        let jobsUsed = max(1, workerResults.filter { $0.processedWorkloads > 0 }.count)
 
         return RepositoryBatchResult(
             reports: reports,
             processedSourceFiles: processed,
             baselineExecutions: baselineExecutions,
             baselineScopeCount: baselineScopeCount,
-            jobsUsed: plan.jobsPlanned
+            jobsUsed: jobsUsed,
+            queueSteals: queueSteals
         )
     }
 
-    private static func executeBucket(
+    private static func executeStaticBucket(
         bucket: MutationExecutionBucket,
         executionRoot: String,
         workerParent: URL,
@@ -809,7 +869,7 @@ struct Mutate4Swift: AsyncParsableCommand {
             ? SPMCoverageProvider(verbose: config.verbose)
             : nil
         config.progressReporter?.stage(
-            "worker \(bucket.workerIndex + 1): starting \(bucket.workloads.count) file(s)"
+            "worker \(bucket.workerIndex + 1): starting static bucket (seed files: \(bucket.workloads.count))"
         )
 
         var reports: [MutationReport] = []
@@ -874,10 +934,115 @@ struct Mutate4Swift: AsyncParsableCommand {
                 )
             }
         }
+        config.progressReporter?.stage(
+            "worker \(bucket.workerIndex + 1): static bucket complete (\(bucket.workloads.count) file(s))"
+        )
 
         return WorkerBucketResult(
             reports: reports,
-            baselineExecutions: baselineExecutions
+            baselineExecutions: baselineExecutions,
+            processedWorkloads: bucket.workloads.count
+        )
+    }
+
+    private static func executeQueuedWorker(
+        workerIndex: Int,
+        seededWorkloads: Int,
+        workQueue: MutationWorkQueue,
+        executionRoot: String,
+        workerParent: URL,
+        config: OrchestratorConfig
+    ) async throws -> WorkerBucketResult {
+        let workerRoot = workerParent
+            .appendingPathComponent("worker-\(workerIndex)-\(UUID().uuidString)")
+            .path
+
+        try createWorkerPackageCopy(from: executionRoot, to: workerRoot)
+        defer { try? FileManager.default.removeItem(atPath: workerRoot) }
+
+        let workerRunner = SPMTestRunner(verbose: config.verbose)
+        let workerCoverage: CoverageProvider? = config.coverageEnabled
+            ? SPMCoverageProvider(verbose: config.verbose)
+            : nil
+        config.progressReporter?.stage(
+            "worker \(workerIndex + 1): starting queue (seed files: \(seededWorkloads))"
+        )
+
+        var reports: [MutationReport] = []
+        reports.reserveCapacity(max(1, seededWorkloads))
+        var baselineCache: [String: BaselineResult] = [:]
+        var baselineExecutions = 0
+        var processedWorkloads = 0
+
+        while let workload = await workQueue.next(
+            for: workerIndex,
+            warmedScopes: Set(baselineCache.keys)
+        ) {
+            processedWorkloads += 1
+            if config.verbose {
+                print(
+                    "== [worker \(workerIndex + 1):\(processedWorkloads)] \(workload.sourceFile) =="
+                )
+            }
+            let context = "worker \(workerIndex + 1) file \(processedWorkloads): \(workload.sourceFile)"
+            config.progressReporter?.stage("[\(context)] preparing")
+
+            let workerSource = try remapSourceFile(
+                workload.sourceFile,
+                fromExecutionRoot: executionRoot,
+                toWorkerRoot: workerRoot
+            )
+            let baselineKey = workload.scopeKey
+            let cachedBaseline = baselineCache[baselineKey]
+            let orchestrator = Orchestrator(
+                testRunner: workerRunner,
+                coverageProvider: workerCoverage,
+                verbose: config.verbose,
+                timeoutMultiplier: config.timeoutMultiplier,
+                timeoutRetries: config.timeoutRetries,
+                buildFirstSampleSize: config.buildFirstSampleSize,
+                buildFirstErrorRatio: config.buildFirstErrorRatio,
+                progressHandler: makeProgressHandler(
+                    reporter: config.progressReporter,
+                    context: context
+                )
+            )
+
+            let workerReport = try orchestrator.run(
+                sourceFile: workerSource,
+                packagePath: workerRoot,
+                testFilter: workload.scopeFilter,
+                baselineOverride: cachedBaseline,
+                resolvedTestFilter: workload.scopeFilter
+            )
+
+            reports.append(
+                MutationReport(
+                    results: workerReport.results,
+                    sourceFile: workload.sourceFile,
+                    baselineDuration: workerReport.baselineDuration
+                )
+            )
+            config.progressReporter?.stage(
+                "[\(context)] completed: mutations \(workerReport.totalMutations), survivors \(workerReport.survived), build errors \(workerReport.buildErrors)"
+            )
+
+            if cachedBaseline == nil && workerReport.totalMutations > 0 {
+                baselineExecutions += 1
+                baselineCache[baselineKey] = BaselineResult(
+                    duration: workerReport.baselineDuration,
+                    timeoutMultiplier: config.timeoutMultiplier
+                )
+            }
+        }
+        config.progressReporter?.stage(
+            "worker \(workerIndex + 1): queue drained (\(processedWorkloads) file(s))"
+        )
+
+        return WorkerBucketResult(
+            reports: reports,
+            baselineExecutions: baselineExecutions,
+            processedWorkloads: processedWorkloads
         )
     }
 

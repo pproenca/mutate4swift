@@ -7,6 +7,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "mutate4swift", targets: ["mutate4swift"]),
+        .executable(name: "SchedulerBenchmark", targets: ["SchedulerBenchmark"]),
         .library(name: "MutationEngine", targets: ["MutationEngine"]),
     ],
     dependencies: [
@@ -33,6 +34,11 @@ let package = Package(
                 "MutationEngine",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .executableTarget(
+            name: "SchedulerBenchmark",
+            dependencies: ["MutationEngine"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(

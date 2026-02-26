@@ -3,8 +3,44 @@ import XCTest
 @testable import MutationEngine
 
 final class SPMTestRunnerTests: XCTestCase {
+    private static let packageName = "SamplePkg"
+    private static let packageLock = NSLock()
+    private static var packagePath: URL?
+
+    override class func setUp() {
+        super.setUp()
+        do {
+            packagePath = FileManager.default.temporaryDirectory
+                .appendingPathComponent("SPMTestRunnerTests-\(UUID().uuidString)")
+            guard let packagePath else {
+                XCTFail("Failed to create package path")
+                return
+            }
+
+            try FileManager.default.createDirectory(at: packagePath, withIntermediateDirectories: true)
+            try writePackageManifest(at: packagePath)
+        } catch {
+            XCTFail("Failed to set up shared Swift package fixture: \(error)")
+        }
+    }
+
+    override class func tearDown() {
+        if let packagePath {
+            try? FileManager.default.removeItem(at: packagePath)
+        }
+        packagePath = nil
+        super.tearDown()
+    }
+
+    override func invokeTest() {
+        // This suite mutates one shared fixture package to avoid repeated full rebuilds.
+        Self.packageLock.lock()
+        defer { Self.packageLock.unlock() }
+        super.invokeTest()
+    }
+
     func testRunTestsPassed() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
         ) { packagePath in
@@ -19,7 +55,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunTestsFailed() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: "XCTAssertEqual(SamplePkg.value(), 2)"
         ) { packagePath in
@@ -30,7 +66,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunTestsBuildError() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int {",
             testMethodBody: "XCTAssertTrue(true)"
         ) { packagePath in
@@ -41,7 +77,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunTestsTimeout() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: """
             Thread.sleep(forTimeInterval: 1.0)
@@ -55,7 +91,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunTestsReturnsNoTestsWhenFilterMatchesNothing() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
         ) { packagePath in
@@ -70,7 +106,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunBaselineSuccessAndFailure() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
         ) { packagePath in
@@ -79,7 +115,7 @@ final class SPMTestRunnerTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(baseline.timeout, 30)
         }
 
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: "XCTAssertEqual(SamplePkg.value(), 2)"
         ) { packagePath in
@@ -96,7 +132,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunBaselineThrowsWhenNoTestsExecuted() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
         ) { packagePath in
@@ -114,7 +150,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunBuildAndRunTestsWithoutBuildPassed() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int { 1 } }",
             testMethodBody: "XCTAssertEqual(SamplePkg.value(), 1)"
         ) { packagePath in
@@ -136,7 +172,7 @@ final class SPMTestRunnerTests: XCTestCase {
     }
 
     func testRunBuildReturnsBuildError() throws {
-        try withTemporaryPackage(
+        try withConfiguredPackage(
             source: "public enum SamplePkg { public static func value() -> Int {",
             testMethodBody: "XCTAssertTrue(true)"
         ) { packagePath in
@@ -146,31 +182,18 @@ final class SPMTestRunnerTests: XCTestCase {
         }
     }
 
-    private func withTemporaryPackage(
+    private func withConfiguredPackage(
         source: String,
         testMethodBody: String,
         body: (URL) throws -> Void
     ) throws {
-        let packagePath = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SPMTestRunnerTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: packagePath, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: packagePath) }
-
-        let packageSwift = """
-        // swift-tools-version: 6.0
-        import PackageDescription
-
-        let package = Package(
-            name: "SamplePkg",
-            products: [
-                .library(name: "SamplePkg", targets: ["SamplePkg"]),
-            ],
-            targets: [
-                .target(name: "SamplePkg"),
-                .testTarget(name: "SamplePkgTests", dependencies: ["SamplePkg"]),
-            ]
-        )
-        """
+        guard let packagePath = Self.packagePath else {
+            throw NSError(
+                domain: "SPMTestRunnerTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Shared package fixture is not initialized"]
+            )
+        }
 
         let testSource = """
         import Foundation
@@ -184,11 +207,40 @@ final class SPMTestRunnerTests: XCTestCase {
         }
         """
 
-        try write(packageSwift, to: packagePath.appendingPathComponent("Package.swift"))
-        try write(source, to: packagePath.appendingPathComponent("Sources/SamplePkg/SamplePkg.swift"))
-        try write(testSource, to: packagePath.appendingPathComponent("Tests/SamplePkgTests/SamplePkgTests.swift"))
+        try write(
+            source,
+            to: packagePath.appendingPathComponent("Sources/\(Self.packageName)/\(Self.packageName).swift")
+        )
+        try write(
+            testSource,
+            to: packagePath.appendingPathComponent("Tests/\(Self.packageName)Tests/\(Self.packageName)Tests.swift")
+        )
 
         try body(packagePath)
+    }
+
+    private static func writePackageManifest(at packagePath: URL) throws {
+        let packageSwift = """
+        // swift-tools-version: 6.0
+        import PackageDescription
+
+        let package = Package(
+            name: "\(packageName)",
+            products: [
+                .library(name: "\(packageName)", targets: ["\(packageName)"]),
+            ],
+            targets: [
+                .target(name: "\(packageName)"),
+                .testTarget(name: "\(packageName)Tests", dependencies: ["\(packageName)"]),
+            ]
+        )
+        """
+
+        try packageSwift.write(
+            to: packagePath.appendingPathComponent("Package.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
     }
 
     private func write(_ content: String, to path: URL) throws {

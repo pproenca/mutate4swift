@@ -138,13 +138,12 @@ public struct MutationStrategyPlanner: Sendable {
             let potentialMutations = sites.count
 
             if let coverageProvider {
-                // Conservative fallback: if coverage cannot be loaded, do not drop mutations.
-                if let covered = try? coverageProvider.coveredLines(
-                    forFile: sourceFile,
-                    packagePath: packagePath
-                ) {
-                    sites = sites.filter { covered.contains($0.line) }
-                }
+                sites = filterSitesUsingCoverage(
+                    sites,
+                    sourceFile: sourceFile,
+                    packagePath: packagePath,
+                    coverageProvider: coverageProvider
+                )
             }
 
             let candidateMutations = sites.count
@@ -164,19 +163,19 @@ public struct MutationStrategyPlanner: Sendable {
             )
         }
 
+        return plan(workloads: workloads, jobs: jobs)
+    }
+
+    public func plan(workloads: [MutationWorkload], jobs: Int) -> MutationStrategyPlan {
+        precondition(jobs > 0, "jobs must be >= 1")
+
         let scopeWeights = workloads.reduce(into: [String: Int]()) { partial, workload in
             partial[workload.scopeKey, default: 0] += workload.candidateMutations
         }
 
         let candidateWorkloads = workloads.filter { $0.candidateMutations > 0 }
         guard !candidateWorkloads.isEmpty else {
-            return MutationStrategyPlan(
-                jobsRequested: jobs,
-                jobsPlanned: 1,
-                workloads: workloads,
-                buckets: [MutationExecutionBucket(workerIndex: 0, workloads: [], totalWeight: 0)],
-                scopeWeights: scopeWeights
-            )
+            return Self.makeEmptyPlan(workloads: workloads, jobs: jobs, scopeWeights: scopeWeights)
         }
 
         let jobsPlanned = min(jobs, candidateWorkloads.count)
@@ -186,12 +185,7 @@ public struct MutationStrategyPlanner: Sendable {
             }
         )
 
-        let sortedWorkloads = candidateWorkloads.sorted {
-            if $0.candidateMutations == $1.candidateMutations {
-                return $0.sourceFile < $1.sourceFile
-            }
-            return $0.candidateMutations > $1.candidateMutations
-        }
+        let sortedWorkloads = candidateWorkloads.sorted(by: Self.compareWorkloadPriority)
 
         let totalCandidateWeight = candidateWorkloads.reduce(0) { $0 + $1.candidateMutations }
         let targetBucketWeight = max(
@@ -214,13 +208,11 @@ public struct MutationStrategyPlanner: Sendable {
             if let primaryWorkerIndex = primaryWorkerByScope[scopeKey],
                let primaryBucket = bucketQueue.bucket(workerIndex: primaryWorkerIndex) {
                 let scopeWeight = scopeWeights[scopeKey, default: workload.candidateMutations]
-                let expectedScopeShare = max(
-                    1,
-                    Int(ceil(Double(scopeWeight) / Double(jobsPlanned)))
-                )
-                let splitThreshold = max(
-                    expectedScopeShare * 2,
-                    min(targetBucketWeight, workload.candidateMutations * 2)
+                let splitThreshold = Self.splitThreshold(
+                    scopeWeight: scopeWeight,
+                    jobsPlanned: jobsPlanned,
+                    targetBucketWeight: targetBucketWeight,
+                    workloadWeight: workload.candidateMutations
                 )
 
                 if primaryBucket.totalWeight <= lightestBucket.totalWeight + splitThreshold {
@@ -251,6 +243,59 @@ public struct MutationStrategyPlanner: Sendable {
             workloads: workloads,
             buckets: buckets,
             scopeWeights: scopeWeights
+        )
+    }
+
+    private func filterSitesUsingCoverage(
+        _ sites: [MutationSite],
+        sourceFile: String,
+        packagePath: String,
+        coverageProvider: CoverageProvider
+    ) -> [MutationSite] {
+        // Conservative fallback: if coverage cannot be loaded, do not drop mutations.
+        guard let coveredLines = try? coverageProvider.coveredLines(
+            forFile: sourceFile,
+            packagePath: packagePath
+        ) else {
+            return sites
+        }
+        return sites.filter { coveredLines.contains($0.line) }
+    }
+
+    private static func makeEmptyPlan(
+        workloads: [MutationWorkload],
+        jobs: Int,
+        scopeWeights: [String: Int]
+    ) -> MutationStrategyPlan {
+        MutationStrategyPlan(
+            jobsRequested: jobs,
+            jobsPlanned: 1,
+            workloads: workloads,
+            buckets: [MutationExecutionBucket(workerIndex: 0, workloads: [], totalWeight: 0)],
+            scopeWeights: scopeWeights
+        )
+    }
+
+    private static func compareWorkloadPriority(_ lhs: MutationWorkload, _ rhs: MutationWorkload) -> Bool {
+        if lhs.candidateMutations == rhs.candidateMutations {
+            return lhs.sourceFile < rhs.sourceFile
+        }
+        return lhs.candidateMutations > rhs.candidateMutations
+    }
+
+    private static func splitThreshold(
+        scopeWeight: Int,
+        jobsPlanned: Int,
+        targetBucketWeight: Int,
+        workloadWeight: Int
+    ) -> Int {
+        let expectedScopeShare = max(
+            1,
+            Int(ceil(Double(scopeWeight) / Double(jobsPlanned)))
+        )
+        return max(
+            expectedScopeShare * 2,
+            min(targetBucketWeight, workloadWeight * 2)
         )
     }
 
@@ -307,7 +352,7 @@ public struct MutationStrategyPlanner: Sendable {
             return heap.first?.workerIndex
         }
 
-        mutating func bucket(workerIndex: Int) -> MutableBucket? {
+        func bucket(workerIndex: Int) -> MutableBucket? {
             states[workerIndex]?.bucket
         }
 
