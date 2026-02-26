@@ -55,13 +55,11 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
         timeout: TimeInterval,
         skipBuild: Bool
     ) throws -> TestRunResult {
-        var args = ["test", "--package-path", packagePath]
-        if skipBuild {
-            args.append("--skip-build")
-        }
-        if let filter = filter {
-            args += ["--filter", filter]
-        }
+        let args = swiftTestArguments(
+            packagePath: packagePath,
+            filter: filter,
+            skipBuild: skipBuild
+        )
 
         let result = try runCommand(
             executable: "/usr/bin/swift",
@@ -80,19 +78,40 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
             print(output)
         }
 
-        let status = result.terminationStatus
-        if status == 0 {
-            if !result.analysis.executedAtLeastOneTest {
-                return .noTests
-            }
-            return .passed
+        return classifySwiftTestResult(
+            terminationStatus: result.terminationStatus,
+            analysis: result.analysis
+        )
+    }
+
+    private func swiftTestArguments(
+        packagePath: String,
+        filter: String?,
+        skipBuild: Bool
+    ) -> [String] {
+        var args = ["test", "--package-path", packagePath]
+        if skipBuild {
+            args.append("--skip-build")
+        }
+        if let filter {
+            args += ["--filter", filter]
+        }
+        return args
+    }
+
+    private func classifySwiftTestResult(
+        terminationStatus: Int32,
+        analysis: OutputAnalysis
+    ) -> TestRunResult {
+        if terminationStatus == 0 {
+            return analysis.executedAtLeastOneTest ? .passed : .noTests
         }
 
-        if result.analysis.indicatesNoTests && !result.analysis.executedAtLeastOneTest {
+        if analysis.indicatesNoTests && !analysis.executedAtLeastOneTest {
             return .noTests
         }
 
-        if result.analysis.sawBuildErrorMarker && !result.analysis.sawBuildCompleteMarker {
+        if analysis.sawBuildErrorMarker && !analysis.sawBuildCompleteMarker {
             return .buildError
         }
 

@@ -44,6 +44,31 @@ public final class XcodeTestRunner: BaselineCapableTestRunner, @unchecked Sendab
     }
 
     public func runTests(packagePath: String, filter: String?, timeout: TimeInterval) throws -> TestRunResult {
+        let execution = try executeXcodeTests(
+            packagePath: packagePath,
+            filter: filter,
+            timeout: timeout
+        )
+
+        if execution.didTimeout {
+            return .timeout
+        }
+
+        if verbose {
+            print(execution.output)
+        }
+
+        return classifyXcodeTestResult(
+            terminationStatus: execution.terminationStatus,
+            output: execution.output
+        )
+    }
+
+    private func executeXcodeTests(
+        packagePath: String,
+        filter: String?,
+        timeout: TimeInterval
+    ) throws -> (terminationStatus: Int32, output: String, didTimeout: Bool) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.currentDirectoryURL = URL(fileURLWithPath: packagePath, isDirectory: true)
@@ -91,23 +116,19 @@ public final class XcodeTestRunner: BaselineCapableTestRunner, @unchecked Sendab
         let finalData = outputData
         outputLock.unlock()
 
-        if didTimeout {
-            return .timeout
-        }
+        return (
+            process.terminationStatus,
+            String(decoding: finalData, as: UTF8.self),
+            didTimeout
+        )
+    }
 
-        let output = String(decoding: finalData, as: UTF8.self)
-
-        if verbose {
-            print(output)
-        }
-
-        let status = process.terminationStatus
-
-        if status == 0 {
-            if !didExecuteAtLeastOneTest(output) {
-                return .noTests
-            }
-            return .passed
+    private func classifyXcodeTestResult(
+        terminationStatus: Int32,
+        output: String
+    ) -> TestRunResult {
+        if terminationStatus == 0 {
+            return didExecuteAtLeastOneTest(output) ? .passed : .noTests
         }
 
         if indicatesNoTests(output), !didExecuteAtLeastOneTest(output) {
