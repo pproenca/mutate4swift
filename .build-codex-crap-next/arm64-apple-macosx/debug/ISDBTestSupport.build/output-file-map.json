@@ -1,0 +1,61 @@
+{
+  "": {
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/master.swiftdeps"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTestSupport/ForwardingIndexDelegate.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/ForwardingIndexDelegate.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/ForwardingIndexDelegate.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/ForwardingIndexDelegate~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/ForwardingIndexDelegate.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/ForwardingIndexDelegate.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTestSupport/SourceFileCache.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/SourceFileCache.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/SourceFileCache.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/SourceFileCache~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/SourceFileCache.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/SourceFileCache.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTestSupport/TestLocation.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocation.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocation.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocation~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocation.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocation.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTestSupport/TestLocationScanner.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocationScanner.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocationScanner.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocationScanner~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocationScanner.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestLocationScanner.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTestSupport/TestSources.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestSources.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestSources.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestSources~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestSources.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TestSources.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTestSupport/TibsTestWorkspace.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TibsTestWorkspace.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TibsTestWorkspace.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TibsTestWorkspace~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TibsTestWorkspace.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/TibsTestWorkspace.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTestSupport/XCTestAssertions.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/XCTestAssertions.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/XCTestAssertions.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/XCTestAssertions~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/XCTestAssertions.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/XCTestAssertions.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/DerivedSources/resource_bundle_accessor.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/resource_bundle_accessor.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/resource_bundle_accessor.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/resource_bundle_accessor~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/resource_bundle_accessor.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTestSupport.build/resource_bundle_accessor.dia"
+  }
+}

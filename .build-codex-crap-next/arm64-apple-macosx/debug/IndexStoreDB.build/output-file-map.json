@@ -1,0 +1,61 @@
+{
+  "": {
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/master.swiftdeps"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/IndexDelegate.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexDelegate.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexDelegate.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexDelegate~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexDelegate.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexDelegate.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/IndexStoreDB.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDB.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDB.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDB~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDB.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDB.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/IndexStoreDBError.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDBError.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDBError.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDBError~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDBError.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/IndexStoreDBError.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/Symbol.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/Symbol.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/Symbol.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/Symbol~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/Symbol.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/Symbol.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/SymbolLocation.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolLocation.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolLocation.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolLocation~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolLocation.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolLocation.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/SymbolOccurrence.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolOccurrence.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolOccurrence.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolOccurrence~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolOccurrence.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolOccurrence.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/SymbolProperty.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolProperty.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolProperty.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolProperty~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolProperty.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolProperty.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB/SymbolRole.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolRole.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolRole.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolRole~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolRole.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/IndexStoreDB.build/SymbolRole.dia"
+  }
+}

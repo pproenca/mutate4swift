@@ -233,27 +233,44 @@ public final class SPMTestRunner: BaselineCapableTestRunner, BuildSplitCapableTe
             }
 
             let scan = rollingWindow + chunk
-            if !executedAtLeastOneTest {
-                executedAtLeastOneTest =
-                    scan.range(of: #"Executed\s+[1-9][0-9]*\s+tests"#, options: .regularExpression) != nil
-                    || scan.range(of: #"Test run with\s+[1-9][0-9]*\s+tests"#, options: .regularExpression) != nil
-                    || scan.contains("Test Case '-[")
-            }
+            updateTestExecutionMarkers(scan)
+            updateNoTestsMarker(scan)
+            updateBuildMarkers(scan)
+            rollingWindow = String(scan.suffix(512))
+        }
 
-            if !indicatesNoTests {
-                indicatesNoTests =
-                    scan.range(of: #"Test run with\s+0\s+tests"#, options: .regularExpression) != nil
-                    || scan.contains("No matching test cases were run")
+        private mutating func updateTestExecutionMarkers(_ scan: String) {
+            guard !executedAtLeastOneTest else {
+                return
             }
+            executedAtLeastOneTest = hasExecutedTestMarker(scan)
+        }
 
+        private func hasExecutedTestMarker(_ scan: String) -> Bool {
+            scan.range(of: #"Executed\s+[1-9][0-9]*\s+tests"#, options: .regularExpression) != nil
+                || scan.range(of: #"Test run with\s+[1-9][0-9]*\s+tests"#, options: .regularExpression) != nil
+                || scan.contains("Test Case '-[")
+        }
+
+        private mutating func updateNoTestsMarker(_ scan: String) {
+            guard !indicatesNoTests else {
+                return
+            }
+            indicatesNoTests = hasNoTestsMarker(scan)
+        }
+
+        private func hasNoTestsMarker(_ scan: String) -> Bool {
+            scan.range(of: #"Test run with\s+0\s+tests"#, options: .regularExpression) != nil
+                || scan.contains("No matching test cases were run")
+        }
+
+        private mutating func updateBuildMarkers(_ scan: String) {
             if !sawBuildErrorMarker {
                 sawBuildErrorMarker = scan.contains("error:")
             }
             if !sawBuildCompleteMarker {
                 sawBuildCompleteMarker = scan.contains("Build complete!")
             }
-
-            rollingWindow = String(scan.suffix(512))
         }
     }
 }

@@ -1,0 +1,180 @@
+{
+  "": {
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/master.swiftdeps"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Application/MutationApplicator.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationApplicator.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationApplicator.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationApplicator~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationApplicator.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationApplicator.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Application/SourceFileManager.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileManager.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileManager.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileManager.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileManager.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Coverage/CoverageProvider.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/CoverageProvider.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/CoverageProvider.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/CoverageProvider~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/CoverageProvider.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/CoverageProvider.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Coverage/SPMCoverageProvider.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMCoverageProvider.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMCoverageProvider.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMCoverageProvider~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMCoverageProvider.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMCoverageProvider.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Discovery/EquivalentMutationFilter.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/EquivalentMutationFilter.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/EquivalentMutationFilter.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/EquivalentMutationFilter~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/EquivalentMutationFilter.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/EquivalentMutationFilter.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Discovery/MutationDiscoverer.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationDiscoverer.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationDiscoverer.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationDiscoverer~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationDiscoverer.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationDiscoverer.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Discovery/SourceFileDiscoverer.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileDiscoverer.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileDiscoverer.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileDiscoverer~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileDiscoverer.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SourceFileDiscoverer.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Errors.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Errors.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Errors.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Errors~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Errors.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Errors.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/FileMapping/IndexStoreTestScopeResolver.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/IndexStoreTestScopeResolver.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/IndexStoreTestScopeResolver.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/IndexStoreTestScopeResolver~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/IndexStoreTestScopeResolver.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/IndexStoreTestScopeResolver.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/FileMapping/TestFileMapper.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestFileMapper.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestFileMapper.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestFileMapper~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestFileMapper.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestFileMapper.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Models/MutationOperator.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationOperator.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationOperator.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationOperator~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationOperator.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationOperator.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Models/MutationReport.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationReport.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationReport.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationReport~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationReport.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationReport.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Models/MutationResult.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationResult.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationResult.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationResult~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationResult.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationResult.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Models/MutationSite.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSite.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSite.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSite~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSite.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSite.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Models/RepositoryMutationReport.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/RepositoryMutationReport.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/RepositoryMutationReport.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/RepositoryMutationReport~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/RepositoryMutationReport.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/RepositoryMutationReport.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Orchestrator.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Orchestrator.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Orchestrator.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Orchestrator~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Orchestrator.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/Orchestrator.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Planning/MutationSchedulerBenchmark.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSchedulerBenchmark.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSchedulerBenchmark.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSchedulerBenchmark~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSchedulerBenchmark.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationSchedulerBenchmark.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Planning/MutationStrategyPlanner.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationStrategyPlanner.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationStrategyPlanner.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationStrategyPlanner~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationStrategyPlanner.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationStrategyPlanner.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Planning/MutationWorkQueue.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationWorkQueue.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationWorkQueue.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationWorkQueue~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationWorkQueue.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/MutationWorkQueue.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Reporting/JSONReporter.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/JSONReporter.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/JSONReporter.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/JSONReporter~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/JSONReporter.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/JSONReporter.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Reporting/TextReporter.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TextReporter.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TextReporter.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TextReporter~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TextReporter.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TextReporter.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Runner/BaselineResult.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/BaselineResult.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/BaselineResult.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/BaselineResult~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/BaselineResult.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/BaselineResult.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Runner/SPMTestRunner.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMTestRunner.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMTestRunner.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMTestRunner~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMTestRunner.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/SPMTestRunner.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Runner/TestRunner.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestRunner.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestRunner.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestRunner~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestRunner.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/TestRunner.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/Sources/MutationEngine/Runner/XcodeTestRunner.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/XcodeTestRunner.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/XcodeTestRunner.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/XcodeTestRunner~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/XcodeTestRunner.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/MutationEngine.build/XcodeTestRunner.dia"
+  }
+}

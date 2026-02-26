@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ArgumentParserToolInfo-tool.build/master.swiftdeps"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/swift-argument-parser/Sources/ArgumentParserToolInfo/ToolInfo.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ArgumentParserToolInfo-tool.build/ToolInfo.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ArgumentParserToolInfo-tool.build/ToolInfo.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ArgumentParserToolInfo-tool.build/ToolInfo~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ArgumentParserToolInfo-tool.build/ToolInfo.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ArgumentParserToolInfo-tool.build/ToolInfo.dia"
+  }
+}

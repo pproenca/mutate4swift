@@ -1,0 +1,68 @@
+{
+  "": {
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/master.swiftdeps"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/Data.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Data.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Data.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Data~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Data.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Data.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/JSONCompilationDatabase.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/JSONCompilationDatabase.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/JSONCompilationDatabase.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/JSONCompilationDatabase~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/JSONCompilationDatabase.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/JSONCompilationDatabase.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/Makefile.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Makefile.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Makefile.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Makefile~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Makefile.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Makefile.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/OutputFileMap.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/OutputFileMap.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/OutputFileMap.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/OutputFileMap~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/OutputFileMap.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/OutputFileMap.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/Process.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Process.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Process.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Process~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Process.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/Process.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/TibsBuilder.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsBuilder.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsBuilder.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsBuilder~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsBuilder.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsBuilder.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/TibsManifest.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsManifest.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsManifest.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsManifest~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsManifest.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsManifest.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/TibsResolvedTarget.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsResolvedTarget.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsResolvedTarget.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsResolvedTarget~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsResolvedTarget.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsResolvedTarget.dia"
+  },
+  "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/ISDBTibs/TibsToolchain.swift": {
+    "dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsToolchain.d",
+    "object": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsToolchain.swift.o",
+    "swiftmodule": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsToolchain~partial.swiftmodule",
+    "swift-dependencies": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsToolchain.swiftdeps",
+    "diagnostics": "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/arm64-apple-macosx/debug/ISDBTibs.build/TibsToolchain.dia"
+  }
+}

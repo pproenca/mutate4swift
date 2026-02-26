@@ -649,23 +649,31 @@ public final class MutationDiscoverer: SyntaxVisitor {
             return "nil"
         }
 
-        switch compact {
-        case "Bool", "Swift.Bool":
+        if Self.boolReturnTypes.contains(compact) {
             return "false"
-        case "String", "Swift.String":
-            return "\"\""
-        case
-            "Int", "Int8", "Int16", "Int32", "Int64",
-            "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
-            "Double", "Float", "CGFloat", "Decimal",
-            "Swift.Int", "Swift.Int8", "Swift.Int16", "Swift.Int32", "Swift.Int64",
-            "Swift.UInt", "Swift.UInt8", "Swift.UInt16", "Swift.UInt32", "Swift.UInt64",
-            "Swift.Double", "Swift.Float":
-            return "0"
-        default:
-            return nil
         }
+
+        if Self.stringReturnTypes.contains(compact) {
+            return "\"\""
+        }
+
+        if Self.numericReturnTypes.contains(compact) {
+            return "0"
+        }
+
+        return nil
     }
+
+    private static let boolReturnTypes: Set<String> = ["Bool", "Swift.Bool"]
+    private static let stringReturnTypes: Set<String> = ["String", "Swift.String"]
+    private static let numericReturnTypes: Set<String> = [
+        "Int", "Int8", "Int16", "Int32", "Int64",
+        "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
+        "Double", "Float", "CGFloat", "Decimal",
+        "Swift.Int", "Swift.Int8", "Swift.Int16", "Swift.Int32", "Swift.Int64",
+        "Swift.UInt", "Swift.UInt8", "Swift.UInt16", "Swift.UInt32", "Swift.UInt64",
+        "Swift.Double", "Swift.Float",
+    ]
 
     private func parseDecimalIntegerLiteral(_ text: String) -> Int? {
         let sanitized = text.replacingOccurrences(of: "_", with: "")

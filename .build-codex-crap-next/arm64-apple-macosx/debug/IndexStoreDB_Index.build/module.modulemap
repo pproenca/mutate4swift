@@ -1,0 +1,4 @@
+module IndexStoreDB_Index {
+    umbrella "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/indexstore-db/Sources/IndexStoreDB_Index/include"
+    export *
+}

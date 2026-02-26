@@ -189,10 +189,11 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
         guard let index = context.index else {
             return
         }
-        guard !context.attemptedRefreshBuild else {
-            return
-        }
-        guard sourceNeedsRefresh(sourceFileCandidates: sourceFileCandidates, index: index) else {
+        guard shouldRefreshIndex(
+            context: context,
+            sourceFileCandidates: sourceFileCandidates,
+            index: index
+        ) else {
             return
         }
 
@@ -201,13 +202,37 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
             return
         }
 
+        refreshIndexStorePathIfAvailable(&context, packagePath: packagePath)
+        reopenIndexAfterRefresh(&context, packagePath: packagePath)
+    }
+
+    private func shouldRefreshIndex(
+        context: PackageContext,
+        sourceFileCandidates: [String],
+        index: IndexStoreDB
+    ) -> Bool {
+        guard !context.attemptedRefreshBuild else {
+            return false
+        }
+        return sourceNeedsRefresh(sourceFileCandidates: sourceFileCandidates, index: index)
+    }
+
+    private func refreshIndexStorePathIfAvailable(
+        _ context: inout PackageContext,
+        packagePath: String
+    ) {
         if let refreshedIndexStorePath = discoverIndexStorePath(in: packagePath) {
             context.indexStorePath = refreshedIndexStorePath
         }
+    }
+
+    private func reopenIndexAfterRefresh(
+        _ context: inout PackageContext,
+        packagePath: String
+    ) {
         guard let indexStorePath = context.indexStorePath else {
             return
         }
-
         context.index = nil
         guard openIndexIfNeeded(
             &context,
@@ -238,26 +263,43 @@ final class IndexStoreTestScopeResolver: IndexStoreTestScopeResolving, @unchecke
     }
 
     private func resolveIndexStoreLibraryPath() -> String? {
-        if let forcedIndexStoreLibraryPath {
-            return fileManager.fileExists(atPath: forcedIndexStoreLibraryPath)
-                ? forcedIndexStoreLibraryPath
-                : nil
+        if let forced = resolveForcedIndexStoreLibraryPath() {
+            return forced
         }
 
-        let environment = ProcessInfo.processInfo.environment
-        if let toolchainDir = environment["TOOLCHAIN_DIR"] {
-            let candidate = URL(fileURLWithPath: toolchainDir, isDirectory: true)
-                .appendingPathComponent("usr/lib/libIndexStore.dylib")
-                .path
-            if fileManager.fileExists(atPath: candidate) {
-                return candidate
-            }
+        if let toolchain = resolveToolchainDirIndexStoreLibraryPath() {
+            return toolchain
         }
 
         guard allowAutomaticLibraryResolution else {
             return nil
         }
 
+        return resolveXcrunIndexStoreLibraryPath()
+    }
+
+    private func resolveForcedIndexStoreLibraryPath() -> String? {
+        guard let forcedIndexStoreLibraryPath else {
+            return nil
+        }
+        return fileManager.fileExists(atPath: forcedIndexStoreLibraryPath)
+            ? forcedIndexStoreLibraryPath
+            : nil
+    }
+
+    private func resolveToolchainDirIndexStoreLibraryPath() -> String? {
+        let environment = ProcessInfo.processInfo.environment
+        guard let toolchainDir = environment["TOOLCHAIN_DIR"] else {
+            return nil
+        }
+
+        let candidate = URL(fileURLWithPath: toolchainDir, isDirectory: true)
+            .appendingPathComponent("usr/lib/libIndexStore.dylib")
+            .path
+        return fileManager.fileExists(atPath: candidate) ? candidate : nil
+    }
+
+    private func resolveXcrunIndexStoreLibraryPath() -> String? {
         guard let swiftcPath = runXcrunFindSwiftc() else {
             return nil
         }

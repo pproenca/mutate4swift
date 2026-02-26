@@ -1,0 +1,112 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "indexstore-db",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/swiftlang/indexstore-db.git",
+          "name" : "IndexStoreDB"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "0cd9a889a3d3743bd4d309c8f89ff73a805c6474"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "indexstore-db"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-argument-parser",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/apple/swift-argument-parser.git",
+          "name" : "swift-argument-parser"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
+            "version" : "1.7.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-argument-parser"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-lmdb",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/swiftlang/swift-lmdb.git",
+          "name" : "CLMDB"
+        },
+        "state" : {
+          "checkoutState" : {
+            "branch" : "release/6.2.1",
+            "revision" : "1ad9a2d80b6fcde498c2242f509bd1be7d667ff8"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-lmdb"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-syntax",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/swiftlang/swift-syntax.git",
+          "name" : "swift-syntax"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "0687f71944021d616d34d922343dcef086855920",
+            "version" : "600.0.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-syntax"
+      }
+    ],
+    "prebuilts" : [
+      {
+        "cModules" : [
+
+        ],
+        "checkoutPath" : "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/checkouts/swift-syntax",
+        "identity" : "swift-syntax",
+        "includePath" : [
+          "Sources/_SwiftLibraryPluginProviderCShims/include",
+          "Sources/_SwiftSyntaxCShims/include"
+        ],
+        "libraryName" : "MacroSupport",
+        "path" : "/Users/pedroproenca/Documents/Projects/mutate4swift/.build-codex-crap-next/prebuilts/swift-syntax/600.0.1/swiftlang-6.2.3.3.21-MacroSupport-macos_aarch64",
+        "products" : [
+          "swift-syntaxPackageTests",
+          "SwiftBasicFormat",
+          "SwiftCompilerPlugin",
+          "SwiftDiagnostics",
+          "SwiftIDEUtils",
+          "SwiftOperators",
+          "SwiftParser",
+          "SwiftParserDiagnostics",
+          "SwiftRefactor",
+          "SwiftSyntax",
+          "SwiftSyntaxBuilder",
+          "SwiftSyntaxMacros",
+          "SwiftSyntaxMacroExpansion",
+          "SwiftSyntaxMacrosTestSupport",
+          "SwiftSyntaxMacrosGenericTestSupport",
+          "_SwiftCompilerPluginMessageHandling",
+          "_SwiftLibraryPluginProvider"
+        ],
+        "version" : "600.0.1"
+      }
+    ]
+  },
+  "version" : 7
+}

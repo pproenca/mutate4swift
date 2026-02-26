@@ -203,32 +203,77 @@ public final class SPMCoverageProvider: CoverageProvider, @unchecked Sendable {
 
     func parseCoverageMap(codecovPath: String) throws -> [String: Set<Int>] {
         let data = try Data(contentsOf: URL(fileURLWithPath: codecovPath))
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataArray = json["data"] as? [[String: Any]] else {
-            throw Mutate4SwiftError.coverageDataUnavailable
-        }
-
+        let dataArray = try decodeCoverageEntries(from: data)
         var linesByFile: [String: Set<Int>] = [:]
 
         for entry in dataArray {
-            guard let files = entry["files"] as? [[String: Any]] else { continue }
-            for file in files {
-                guard let filename = file["filename"] as? String,
-                      let segments = file["segments"] as? [[Any]] else { continue }
-                let normalizedFilename = (filename as NSString).standardizingPath
-
-                for segment in segments {
-                    guard segment.count >= 5,
-                          let line = segment[0] as? Int,
-                          let count = segment[2] as? Int else { continue }
-                    if count > 0 {
-                        linesByFile[normalizedFilename, default: []].insert(line)
-                    }
-                }
-            }
+            appendCoveredLines(from: entry, into: &linesByFile)
         }
 
         return linesByFile
     }
+
+    private func decodeCoverageEntries(from data: Data) throws -> [[String: Any]] {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataArray = json["data"] as? [[String: Any]] else {
+            throw Mutate4SwiftError.coverageDataUnavailable
+        }
+        return dataArray
+    }
+
+    private func appendCoveredLines(
+        from entry: [String: Any],
+        into linesByFile: inout [String: Set<Int>]
+    ) {
+        guard let files = entry["files"] as? [[String: Any]] else {
+            return
+        }
+
+        for file in files {
+            guard let payload = extractFileCoveragePayload(file) else {
+                continue
+            }
+            ingestCoveredSegments(
+                payload.segments,
+                normalizedFilename: payload.normalizedFilename,
+                into: &linesByFile
+            )
+        }
+    }
+
+    private func extractFileCoveragePayload(
+        _ file: [String: Any]
+    ) -> (normalizedFilename: String, segments: [[Any]])? {
+        guard let filename = file["filename"] as? String,
+              let segments = file["segments"] as? [[Any]] else {
+            return nil
+        }
+
+        return ((filename as NSString).standardizingPath, segments)
+    }
+
+    private func ingestCoveredSegments(
+        _ segments: [[Any]],
+        normalizedFilename: String,
+        into linesByFile: inout [String: Set<Int>]
+    ) {
+        for segment in segments {
+            guard let coveredLine = parseCoveredSegmentLine(segment) else {
+                continue
+            }
+            linesByFile[normalizedFilename, default: []].insert(coveredLine)
+        }
+    }
+
+    private func parseCoveredSegmentLine(_ segment: [Any]) -> Int? {
+        guard segment.count >= 5,
+              let line = segment[0] as? Int,
+              let count = segment[2] as? Int,
+              count > 0 else {
+            return nil
+        }
+
+        return line
+    }
+
 }

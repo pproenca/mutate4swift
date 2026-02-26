@@ -123,30 +123,56 @@ public final class Orchestrator: @unchecked Sendable {
         var sites = discoverer.discoverSites()
 
         if verbose { print("Discovered \(sites.count) potential mutation sites") }
+        sites = applyEquivalentFilter(to: sites, originalSource: originalSource)
+        sites = applyLineFilterIfNeeded(to: sites, lines: lines)
+        return applyCoverageFilterIfNeeded(
+            to: sites,
+            sourceFile: sourceFile,
+            packagePath: packagePath
+        )
+    }
 
+    private func applyEquivalentFilter(
+        to sites: [MutationSite],
+        originalSource: String
+    ) -> [MutationSite] {
         let equivalentFilter = EquivalentMutationFilter()
-        sites = equivalentFilter.filter(sites, source: originalSource)
+        let filtered = equivalentFilter.filter(sites, source: originalSource)
+        if verbose { print("After equivalent filter: \(filtered.count) sites") }
+        return filtered
+    }
 
-        if verbose { print("After equivalent filter: \(sites.count) sites") }
-
-        if let lines {
-            sites = sites.filter { lines.contains($0.line) }
-            if verbose { print("After line filter: \(sites.count) sites") }
+    private func applyLineFilterIfNeeded(
+        to sites: [MutationSite],
+        lines: Set<Int>?
+    ) -> [MutationSite] {
+        guard let lines else {
+            return sites
         }
 
+        let filtered = sites.filter { lines.contains($0.line) }
+        if verbose { print("After line filter: \(filtered.count) sites") }
+        return filtered
+    }
+
+    private func applyCoverageFilterIfNeeded(
+        to sites: [MutationSite],
+        sourceFile: String,
+        packagePath: String
+    ) -> [MutationSite] {
         guard let coverageProvider else {
             return sites
         }
 
         do {
             let covered = try coverageProvider.coveredLines(forFile: sourceFile, packagePath: packagePath)
-            sites = sites.filter { covered.contains($0.line) }
-            if verbose { print("After coverage filter: \(sites.count) sites") }
+            let filtered = sites.filter { covered.contains($0.line) }
+            if verbose { print("After coverage filter: \(filtered.count) sites") }
+            return filtered
         } catch {
             if verbose { print("Warning: Could not load coverage data: \(error)") }
+            return sites
         }
-
-        return sites
     }
 
     private func resolveBaseline(

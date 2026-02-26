@@ -21,6 +21,14 @@ private struct ScenarioSummary: Codable {
     let deterministic: Bool
 }
 
+private struct ScenarioSamples {
+    let staticMakespans: [Double]
+    let dynamicMakespans: [Double]
+    let staticBaselines: [Int]
+    let dynamicBaselines: [Int]
+    let queueSteals: [Int]
+}
+
 private enum OutputMode {
     case table
     case json
@@ -232,7 +240,19 @@ struct SchedulerBenchmarkMain {
     private static func runScenario(_ scenario: Scenario, runs: Int) async -> ScenarioSummary {
         let planner = MutationStrategyPlanner()
         let plan = planner.plan(workloads: scenario.workloads, jobs: scenario.jobs)
+        let samples = await collectScenarioSamples(
+            plan: plan,
+            costModel: scenario.costModel,
+            runs: runs
+        )
+        return makeScenarioSummary(scenario: scenario, runs: runs, samples: samples)
+    }
 
+    private static func collectScenarioSamples(
+        plan: MutationStrategyPlan,
+        costModel: MutationSchedulerCostModel,
+        runs: Int
+    ) async -> ScenarioSamples {
         var staticMakespans: [Double] = []
         var dynamicMakespans: [Double] = []
         var staticBaselines: [Int] = []
@@ -247,7 +267,7 @@ struct SchedulerBenchmarkMain {
         for _ in 0..<runs {
             let comparison = await MutationSchedulerBenchmark.compare(
                 plan: plan,
-                costModel: scenario.costModel
+                costModel: costModel
             )
             staticMakespans.append(comparison.staticMetrics.makespan)
             dynamicMakespans.append(comparison.dynamicMetrics.makespan)
@@ -256,13 +276,23 @@ struct SchedulerBenchmarkMain {
             queueSteals.append(comparison.dynamicMetrics.queueSteals)
         }
 
-        let staticMean = average(staticMakespans)
-        let dynamicMean = average(dynamicMakespans)
-        let deterministic = isDeterministic(staticMakespans)
-            && isDeterministic(dynamicMakespans)
-            && isDeterministic(staticBaselines)
-            && isDeterministic(dynamicBaselines)
-            && isDeterministic(queueSteals)
+        return ScenarioSamples(
+            staticMakespans: staticMakespans,
+            dynamicMakespans: dynamicMakespans,
+            staticBaselines: staticBaselines,
+            dynamicBaselines: dynamicBaselines,
+            queueSteals: queueSteals
+        )
+    }
+
+    private static func makeScenarioSummary(
+        scenario: Scenario,
+        runs: Int,
+        samples: ScenarioSamples
+    ) -> ScenarioSummary {
+        let staticMean = average(samples.staticMakespans)
+        let dynamicMean = average(samples.dynamicMakespans)
+        let deterministic = isScenarioDeterministic(samples)
 
         return ScenarioSummary(
             name: scenario.name,
@@ -270,12 +300,27 @@ struct SchedulerBenchmarkMain {
             runs: runs,
             staticMakespan: staticMean,
             dynamicMakespan: dynamicMean,
-            speedup: dynamicMean > 0 ? staticMean / dynamicMean : 0,
-            staticBaselines: staticBaselines.first ?? 0,
-            dynamicBaselines: dynamicBaselines.first ?? 0,
-            queueSteals: queueSteals.first ?? 0,
+            speedup: scenarioSpeedup(staticMakespan: staticMean, dynamicMakespan: dynamicMean),
+            staticBaselines: samples.staticBaselines.first ?? 0,
+            dynamicBaselines: samples.dynamicBaselines.first ?? 0,
+            queueSteals: samples.queueSteals.first ?? 0,
             deterministic: deterministic
         )
+    }
+
+    private static func isScenarioDeterministic(_ samples: ScenarioSamples) -> Bool {
+        isDeterministic(samples.staticMakespans)
+            && isDeterministic(samples.dynamicMakespans)
+            && isDeterministic(samples.staticBaselines)
+            && isDeterministic(samples.dynamicBaselines)
+            && isDeterministic(samples.queueSteals)
+    }
+
+    private static func scenarioSpeedup(staticMakespan: Double, dynamicMakespan: Double) -> Double {
+        guard dynamicMakespan > 0 else {
+            return 0
+        }
+        return staticMakespan / dynamicMakespan
     }
 
     private static func printTable(_ summaries: [ScenarioSummary]) {

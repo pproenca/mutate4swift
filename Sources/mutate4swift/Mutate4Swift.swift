@@ -399,6 +399,12 @@ struct Mutate4Swift: AsyncParsableCommand {
             return
         }
 
+        try validateUnsupportedXcodeModeOptions()
+        try validateXcodeRootSelection()
+        try validateXcodeSchemeOption()
+    }
+
+    private func validateUnsupportedXcodeModeOptions() throws {
         if all {
             throw ValidationError("--all is currently only supported in SwiftPM mode.")
         }
@@ -410,7 +416,9 @@ struct Mutate4Swift: AsyncParsableCommand {
         if packagePath != nil {
             throw ValidationError("--package-path/--project cannot be combined with Xcode runner options.")
         }
+    }
 
+    private func validateXcodeRootSelection() throws {
         if xcodeWorkspace != nil && xcodeProject != nil {
             throw ValidationError("Specify either --xcode-workspace or --xcode-project, not both.")
         }
@@ -418,7 +426,9 @@ struct Mutate4Swift: AsyncParsableCommand {
         if xcodeWorkspace == nil && xcodeProject == nil {
             throw ValidationError("Xcode mode requires --xcode-workspace or --xcode-project.")
         }
+    }
 
+    private func validateXcodeSchemeOption() throws {
         guard let scheme = xcodeScheme, !scheme.isEmpty else {
             throw ValidationError("Xcode mode requires --xcode-scheme.")
         }
@@ -1320,17 +1330,12 @@ struct Mutate4Swift: AsyncParsableCommand {
 
         switch mutateError {
         case .baselineTestsFailed:
-            scorecard.baselineGate = .failed("Baseline tests failed")
-            if case .skipped = scorecard.noTestsGate {
-                scorecard.noTestsGate = .passed("Tests executed, but baseline assertions failed")
-            }
+            applyBaselineFailureToScorecard(scorecard: &scorecard)
         case .noTestsExecuted(let filter):
-            let detail = filter.map { "No tests executed for filter '\($0)'" } ?? "No tests executed"
-            scorecard.baselineGate = .failed(detail)
-            scorecard.noTestsGate = .failed(detail)
+            applyNoTestsFailureToScorecard(scorecard: &scorecard, filter: filter)
         case .buildErrorRatioExceeded(let actual, let limit):
             scorecard.buildErrorBudgetGate = .failed(
-                "Build error ratio \(String(format: "%.2f", actual * 100))% exceeded \(String(format: "%.2f", limit * 100))%"
+                buildErrorRatioExceededMessage(actual: actual, limit: limit)
             )
         case .backupRestoreFailed(let path):
             scorecard.restoreGuaranteeGate = .failed("Stale backup remains at \(path)")
@@ -1339,6 +1344,26 @@ struct Mutate4Swift: AsyncParsableCommand {
         default:
             break
         }
+    }
+
+    private func applyBaselineFailureToScorecard(scorecard: inout ReadinessScorecard) {
+        scorecard.baselineGate = .failed("Baseline tests failed")
+        if case .skipped = scorecard.noTestsGate {
+            scorecard.noTestsGate = .passed("Tests executed, but baseline assertions failed")
+        }
+    }
+
+    private func applyNoTestsFailureToScorecard(
+        scorecard: inout ReadinessScorecard,
+        filter: String?
+    ) {
+        let detail = filter.map { "No tests executed for filter '\($0)'" } ?? "No tests executed"
+        scorecard.baselineGate = .failed(detail)
+        scorecard.noTestsGate = .failed(detail)
+    }
+
+    private func buildErrorRatioExceededMessage(actual: Double, limit: Double) -> String {
+        "Build error ratio \(String(format: "%.2f", actual * 100))% exceeded \(String(format: "%.2f", limit * 100))%"
     }
 
     private func resolveSourceFile() throws -> String? {

@@ -4,33 +4,53 @@ public struct TextReporter: Sendable {
     public init() {}
 
     public func report(_ report: MutationReport) -> String {
-        var lines: [String] = []
+        var lines = mutationReportHeaderLines(report)
+        appendMutationDetails(report.results, to: &lines)
+        appendMutationSummary(report, to: &lines)
+        appendSurvivingMutationDetails(report.results, to: &lines)
+        return lines.joined(separator: "\n")
+    }
 
-        lines.append("")
-        lines.append("== Mutation Testing Report ==")
-        lines.append("Source: \(report.sourceFile)")
-        lines.append("Baseline duration: \(String(format: "%.2f", report.baselineDuration))s")
-        lines.append("")
+    private func mutationReportHeaderLines(_ report: MutationReport) -> [String] {
+        [
+            "",
+            "== Mutation Testing Report ==",
+            "Source: \(report.sourceFile)",
+            "Baseline duration: \(String(format: "%.2f", report.baselineDuration))s",
+            "",
+        ]
+    }
 
-        // Per-mutation details
-        for result in report.results {
-            let site = result.site
-            let status: String
-            switch result.outcome {
-            case .killed: status = "KILLED"
-            case .survived: status = "SURVIVED"
-            case .timeout: status = "TIMEOUT"
-            case .buildError: status = "BUILD_ERROR"
-            case .skipped: status = "SKIPPED"
-            }
-
-            lines.append(
-                "  [\(status)] Line \(site.line): "
-                + "\(site.mutationOperator.description) "
-                + "\"\(site.originalText)\" → \"\(site.mutatedText)\""
-            )
+    private func appendMutationDetails(_ results: [MutationResult], to lines: inout [String]) {
+        for result in results {
+            lines.append(formattedMutationDetail(result: result))
         }
+    }
 
+    private func formattedMutationDetail(result: MutationResult) -> String {
+        let site = result.site
+        return
+            "  [\(statusLabel(for: result.outcome))] Line \(site.line): "
+            + "\(site.mutationOperator.description) "
+            + "\"\(site.originalText)\" → \"\(site.mutatedText)\""
+    }
+
+    private func statusLabel(for outcome: MutationOutcome) -> String {
+        switch outcome {
+        case .killed:
+            return "KILLED"
+        case .survived:
+            return "SURVIVED"
+        case .timeout:
+            return "TIMEOUT"
+        case .buildError:
+            return "BUILD_ERROR"
+        case .skipped:
+            return "SKIPPED"
+        }
+    }
+
+    private func appendMutationSummary(_ report: MutationReport, to lines: inout [String]) {
         lines.append("")
         lines.append("== Summary ==")
         lines.append("Total mutations:  \(report.totalMutations)")
@@ -41,21 +61,25 @@ public struct TextReporter: Sendable {
         lines.append("Skipped:          \(report.skipped)")
         lines.append("Kill percentage:  \(String(format: "%.1f", report.killPercentage))%")
         lines.append("")
+    }
 
-        if report.survived > 0 {
-            lines.append("SURVIVING MUTATIONS (test gaps):")
-            for result in report.results where result.outcome == .survived {
-                let site = result.site
-                lines.append(
-                    "  Line \(site.line): "
-                    + "\(site.mutationOperator.description) "
-                    + "\"\(site.originalText)\" → \"\(site.mutatedText)\""
-                )
-            }
-            lines.append("")
+    private func appendSurvivingMutationDetails(_ results: [MutationResult], to lines: inout [String]) {
+        let survivors = results.filter { $0.outcome == .survived }
+        guard !survivors.isEmpty else {
+            return
         }
 
-        return lines.joined(separator: "\n")
+        lines.append("SURVIVING MUTATIONS (test gaps):")
+        for result in survivors {
+            lines.append(formattedSurvivorDetail(site: result.site))
+        }
+        lines.append("")
+    }
+
+    private func formattedSurvivorDetail(site: MutationSite) -> String {
+        "  Line \(site.line): "
+            + "\(site.mutationOperator.description) "
+            + "\"\(site.originalText)\" → \"\(site.mutatedText)\""
     }
 
     public func report(_ report: RepositoryMutationReport) -> String {
